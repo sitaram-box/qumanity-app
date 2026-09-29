@@ -1,0 +1,19 @@
+{
+  "name": "qumanity-ops",
+  "private": true,
+  "description": "Admin scripts run from the Mac with the Firebase Admin SDK (testing phase on Spark).",
+  "scripts": {
+    "ops": "tsx src/cli.ts",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "firebase-admin": "^13.10.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.20.4",
+    "tsx": "^4.23.15",
+    "typescript": "~5.9",
+    "vitest": "^4.1.11"
+  }
+}

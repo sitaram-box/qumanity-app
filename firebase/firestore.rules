@@ -1,0 +1,326 @@
+rules_version = '2';
+
+// Qumanity security rules — TESTING PHASE (Spark plan, no Cloud Functions).
+// docs/DEVELOPMENT_PLAN.md §17.
+//
+// Registration runs as ONE client transaction (shared/src/registration.ts).
+// Each write below checks the others with getAfter(), so the transaction is
+// only accepted when it is complete and consistent.
+// Admin work (seeding, Mentor seats, closing votes) runs from the Mac with the
+// Admin SDK (tools/ops), which bypasses these rules.
+//
+// uid_links/{authUid} = { user_id, account_id, chain, village_id } is the
+// person's identity for every permission check below.
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ---------- helpers ----------
+    function signedIn() { return request.auth != null; }
+    function uid() { return request.auth.uid; }
+    function path(p) { return /databases/$(database)/documents/$(p); }
+    function linkPath() { return /databases/$(database)/documents/uid_links/$(request.auth.uid); }
+    function registered() { return signedIn() && exists(linkPath()); }
+    function me() { return get(linkPath()).data; }
+    function linkAfter() { return getAfter(linkPath()).data; }
+    function myId() { return me().user_id; }
+    function myAcc() { return me().account_id; }
+    function roles() { return get(/databases/$(database)/documents/config/roles).data; }
+    function isOwnerPhone() { return signedIn() && request.auth.token.phone_number == roles().owner_phone; }
+    function isMentor() { return registered() && myId() == roles().owner_user_id; }
+
+    function groupDoc(g) { return get(/databases/$(database)/documents/groups/$(g)).data; }
+    function isResident(g) { return registered() && g in me().chain.values(); }
+    function isCouncil(grp) { return registered() && myId() in grp.council_ids; }
+    function hasMemberDoc(g) { return registered() && exists(/databases/$(database)/documents/groups/$(g)/members/$(myId())); }
+    function isSocialWorker(g) { return registered() && exists(/databases/$(database)/documents/groups/$(g)/social_workers/$(myId())); }
+    function isMember(g) { return isResident(g) || hasMemberDoc(g) || isCouncil(groupDoc(g)); }
+
+    // Chat box / new posts: Village open to residents, District to approved
+    // Social Workers, everything else council only; personal groups to members.
+    function canPostIn(g) {
+      let grp = groupDoc(g);
+      return grp.is_active == true && (
+        isCouncil(grp)
+        || (grp.timeline == 'personal' && hasMemberDoc(g))
+        || (isResident(g) && (grp.mode == 'open' || (grp.mode == 'social_workers' && isSocialWorker(g))))
+      );
+    }
+
+    // Voting deadline = voting_start + 7…14 days by level (no server to stamp voting_end).
+    function votingDays(level) {
+      return {'village': 7, 'tehsil': 8, 'district': 9, 'state': 10, 'zone': 11,
+              'country': 12, 'continent': 13, 'earth': 14}[level];
+    }
+    function votingOpen(p) { return p.status == 'active' && request.time < p.voting_start + duration.value(votingDays(p.level), 'd'); }
+
+    function validText(s, max) { return s is string && s.size() > 0 && s.size() <= max; }
+    function onlyChanged(keys) { return request.resource.data.diff(resource.data).affectedKeys().hasOnly(keys); }
+    function isDigits(s, n) { return s is string && s.size() == n && s.matches('[1-9][0-9]*'); }
+
+    // ---------- configuration (written by tools/ops) ----------
+    match /config/{doc} {
+      allow read: if signedIn();
+    }
+
+    match /locations/{locationId} {
+      allow read: if signedIn();
+    }
+
+    // ---------- registration (one transaction) ----------
+    // Number registry: create-only, so a taken number fails the whole transaction.
+    // The owner's User ID is pre-reserved by tools/ops and claimed once.
+    match /id_registry/{n} {
+      allow create: if signedIn()
+        && request.resource.data.keys().hasOnly(['kind', 'uid', 'created_at'])
+        && request.resource.data.uid == uid()
+        && request.resource.data.created_at == request.time
+        && ((request.resource.data.kind == 'user' && isDigits(n, 9) && linkAfter().user_id == n)
+            || (request.resource.data.kind == 'account' && isDigits(n, 10) && linkAfter().account_id == n));
+      allow update: if signedIn()
+        && resource.data.kind == 'user'
+        && resource.data.uid == null
+        && resource.data.reserved_phone == request.auth.token.phone_number
+        && onlyChanged(['uid'])
+        && request.resource.data.uid == uid()
+        && linkAfter().user_id == n;
+    }
+
+    match /uid_links/{authUid} {
+      allow get: if signedIn() && authUid == uid();
+      allow create: if signedIn() && authUid == uid()
+        && request.resource.data.keys().hasOnly(['user_id', 'account_id', 'chain', 'village_id', 'created_at'])
+        && request.resource.data.created_at == request.time
+        && getAfter(path('id_registry/' + request.resource.data.user_id)).data.uid == uid()
+        && getAfter(path('id_registry/' + request.resource.data.account_id)).data.uid == uid()
+        // The chain must be exactly the village's chain, and the village group open (or the owner).
+        && get(path('locations/' + request.resource.data.village_id)).data.level == 'village'
+        && request.resource.data.chain == get(path('locations/' + request.resource.data.village_id)).data.chain
+        && (groupDoc(request.resource.data.chain.village).is_active == true || isOwnerPhone());
+    }
+
+    // Serials: each registration moves a counter up by exactly one.
+    match /counters/{locationId} {
+      allow get: if signedIn();
+      allow create, update: if signedIn()
+        && request.resource.data.keys().hasOnly(['born_serial', 'resident_serial'])
+        && bornOk(locationId) && residentOk(locationId);
+
+      function before(k) { return resource == null ? 0 : resource.data.get(k, 0); }
+      function after(k) { return request.resource.data.get(k, 0); }
+      function bornOk(loc) {
+        return after('born_serial') == before('born_serial')
+          || (after('born_serial') == before('born_serial') + 1
+              && getAfter(path('identities/' + linkAfter().user_id)).data.serial == after('born_serial')
+              && getAfter(path('identities/' + linkAfter().user_id)).data.location_id == loc);
+      }
+      function residentOk(loc) {
+        return after('resident_serial') == before('resident_serial')
+          || (after('resident_serial') == before('resident_serial') + 1
+              && getAfter(path('account_identities/' + linkAfter().account_id)).data.serial == after('resident_serial')
+              && getAfter(path('account_identities/' + linkAfter().account_id)).data.location_id == loc);
+      }
+    }
+
+    match /users/{userId} {
+      allow read: if registered() && userId == myId();
+      allow create: if signedIn()
+        && linkAfter().user_id == userId
+        && request.resource.data.user_id == userId
+        && request.resource.data.auth_uid == uid()
+        && request.resource.data.phone == request.auth.token.phone_number
+        && request.resource.data.account_id == linkAfter().account_id
+        && request.resource.data.account_ids == [linkAfter().account_id]
+        && request.resource.data.chain == linkAfter().chain
+        && request.resource.data.present_location.id == linkAfter().village_id
+        && request.resource.data.gender in ['M', 'F', 'O']
+        && validText(request.resource.data.name, 80)
+        && request.resource.data.dob.matches('[0-9]{4}-[0-9]{2}-[0-9]{2}')
+        && request.resource.data.tob.matches('[0-9]{2}:[0-9]{2}')
+        && request.resource.data.created_at == request.time;
+      allow update: if registered() && userId == myId() && onlyChanged(['fcm_tokens', 'language']);
+
+      match /private_posts/{postId} { allow read: if registered() && userId == myId(); }
+      match /contacts/{accountId} { allow read: if registered() && userId == myId(); }
+    }
+
+    // Public profile: fetch one by exact Account ID; no listing.
+    match /accounts/{accountId} {
+      allow get: if registered();
+      allow create: if signedIn()
+        && linkAfter().account_id == accountId
+        && request.resource.data.account_id == accountId
+        && request.resource.data.village_group == linkAfter().chain.village
+        && request.resource.data.active == true
+        && request.resource.data.created_at == request.time;
+      allow update: if registered() && accountId == myAcc() && onlyChanged(['display_name', 'photo_url']);
+    }
+
+    // Hidden readable IDs: written once at registration, readable only by the Mentor.
+    match /identities/{userId} {
+      allow get: if isMentor();
+      allow create: if signedIn()
+        && linkAfter().user_id == userId
+        && request.resource.data.user_id == userId
+        && request.resource.data.location_id == getAfter(path('users/' + userId)).data.birth_location.id;
+    }
+    match /account_identities/{accountId} {
+      allow get: if isMentor();
+      allow create: if signedIn()
+        && linkAfter().account_id == accountId
+        && request.resource.data.user_id == linkAfter().user_id
+        && request.resource.data.location_id == linkAfter().village_id;
+    }
+
+    // ---------- PIN (testing phase; moves to a server function on Blaze) ----------
+    // pin_salts: the salt, readable by its owner.  secrets: the salted hash, never readable.
+    // pin_checks: a write that only succeeds when the hash matches (server-side comparison).
+    match /pin_salts/{authUid} {
+      allow get: if signedIn() && authUid == uid();
+      allow create: if signedIn() && authUid == uid() && request.resource.data.keys().hasOnly(['salt']);
+    }
+    match /secrets/{authUid} {
+      allow create: if signedIn() && authUid == uid() && request.resource.data.keys().hasOnly(['hash']);
+      // Changing the PIN proves the old one.
+      allow update: if signedIn() && authUid == uid()
+        && request.resource.data.keys().hasOnly(['hash', 'prev_hash'])
+        && request.resource.data.prev_hash == resource.data.hash;
+    }
+    match /pin_checks/{authUid} {
+      allow create, update: if signedIn() && authUid == uid()
+        && request.resource.data.keys().hasOnly(['hash', 'at'])
+        && request.resource.data.at == request.time
+        && request.resource.data.hash == get(path('secrets/' + uid())).data.hash;
+    }
+
+    // ---------- groups ----------
+    match /groups/{g} {
+      allow read: if signedIn();
+      // Registration adds exactly one resident to each group of the new chain.
+      allow update: if signedIn()
+        && onlyChanged(['user_count'])
+        && request.resource.data.user_count == resource.data.user_count + 1
+        && !exists(linkPath())
+        && g in linkAfter().chain.values();
+
+      match /members/{uid} {
+        allow read: if isMember(g);
+        allow update: if registered() && uid == myId() && onlyChanged(['last_read_at', 'muted']);
+      }
+      match /social_workers/{uid} { allow read: if registered(); }
+
+      match /messages/{m} {
+        allow read: if isMember(g);
+        allow create: if canPostIn(g)
+          && request.resource.data.sender_account == myAcc()
+          && request.resource.data.timestamp == request.time
+          && request.resource.data.type == 'text'   // media needs Storage (Blaze)
+          && validText(request.resource.data.text, 4000)
+          && request.resource.data.keys().hasOnly(['sender_account', 'sender_name', 'type', 'text', 'reply_to', 'timestamp']);
+        allow update: if registered() && resource.data.sender_account == myAcc()
+          && onlyChanged(['deleted']) && request.resource.data.deleted == true;
+      }
+
+      match /timeline/{p} {
+        function post() { return get(/databases/$(database)/documents/groups/$(g)/timeline/$(p)).data; }
+        function votePath() { return /databases/$(database)/documents/groups/$(g)/timeline/$(p)/votes/$(myId()); }
+        function oldValue() { return exists(votePath()) ? get(votePath()).data.value : 0; }
+
+        allow read: if isMember(g) && resource.data.status != 'removed';
+        // New posts start at the group's level; elevated copies are made by tools/ops.
+        allow create: if canPostIn(g) && groupDoc(g).timeline != 'personal'
+          && request.resource.data.keys().hasOnly(['author_account', 'author_name', 'content', 'level', 'score', 'voter_count',
+               'voting_start', 'status', 'origin_post', 'origin_group', 'elevated_to', 'comment_count'])
+          && request.resource.data.author_account == myAcc()
+          && validText(request.resource.data.content, 5000)
+          && request.resource.data.level == groupDoc(g).level
+          && request.resource.data.status == 'active'
+          && request.resource.data.score == 0
+          && request.resource.data.voter_count == 0
+          && request.resource.data.comment_count == 0
+          && request.resource.data.origin_post == null
+          && request.resource.data.origin_group == g
+          && request.resource.data.elevated_to == null
+          && request.resource.data.voting_start == request.time;
+        // Score moves together with the voter's own vote doc, in one transaction.
+        allow update: if isResident(g)
+          && votingOpen(resource.data)
+          && onlyChanged(['score', 'voter_count'])
+          && request.resource.data.score == resource.data.score + getAfter(votePath()).data.value - oldValue()
+          && request.resource.data.voter_count == resource.data.voter_count + (exists(votePath()) ? 0 : 1);
+
+        match /votes/{voterId} {
+          allow read: if registered() && voterId == myId();
+          allow create, update: if isResident(g) && voterId == myId()
+            && votingOpen(post())
+            && request.resource.data.keys().hasOnly(['value', 'at'])
+            && request.resource.data.value in [-1, 0, 1]
+            && request.resource.data.at == request.time
+            && getAfter(/databases/$(database)/documents/groups/$(g)/timeline/$(p)).data.score
+               == post().score + request.resource.data.value - (resource == null ? 0 : resource.data.value);
+        }
+
+        // Comments only once voting is finished (frozen or elevated).
+        match /comments/{c} {
+          allow read: if isMember(g);
+          allow create: if isMember(g)
+            && post().status in ['frozen', 'elevated']
+            && request.resource.data.keys().hasOnly(['author_account', 'author_name', 'text', 'at'])
+            && request.resource.data.author_account == myAcc()
+            && validText(request.resource.data.text, 2000)
+            && request.resource.data.at == request.time;
+        }
+      }
+    }
+
+    // ---------- private timeline ----------
+    // Request id = <from>_<to>_<type>: one request per pair and type.
+    match /requests/{r} {
+      allow read: if registered() && myAcc() in [resource.data.from_account, resource.data.to_account];
+      allow create: if registered()
+        && r == myAcc() + '_' + request.resource.data.to_account + '_' + request.resource.data.type
+        && request.resource.data.from_account == myAcc()
+        && request.resource.data.to_account != myAcc()
+        && exists(path('accounts/' + request.resource.data.to_account))
+        && request.resource.data.type in ['friend', 'family', 'message']
+        && request.resource.data.status == 'pending'
+        && (request.resource.data.type == 'message'
+              ? validText(request.resource.data.first_message, 500)
+              : request.resource.data.first_message == null)
+        && request.resource.data.created_at == request.time
+        && request.resource.data.responded_at == null;
+      allow update: if registered() && resource.data.to_account == myAcc()
+        && resource.data.status in ['pending', 'waiting']
+        && request.resource.data.status in ['accepted', 'declined', 'waiting']
+        && request.resource.data.responded_at == request.time
+        && onlyChanged(['status', 'responded_at']);
+    }
+
+    match /chats/{c} {
+      allow read: if registered() && myAcc() in resource.data.participants;
+      // Opened by the recipient when accepting a request (Phase 3).
+      match /messages/{m} {
+        function chat() { return get(/databases/$(database)/documents/chats/$(c)).data; }
+        allow read: if registered() && myAcc() in chat().participants;
+        allow create: if registered() && myAcc() in chat().participants
+          && request.resource.data.sender_account == myAcc()
+          && request.resource.data.timestamp == request.time
+          && request.resource.data.read_by == []
+          && request.resource.data.type == 'text'
+          && validText(request.resource.data.text, 4000);
+        allow update: if registered() && myAcc() in chat().participants
+          && resource.data.sender_account != myAcc()
+          && onlyChanged(['read_by'])
+          && request.resource.data.read_by == resource.data.read_by.concat([myAcc()]);
+      }
+    }
+
+    // ---------- elections (Phase 6) ----------
+    match /elections/{e} {
+      allow read: if registered();
+      match /candidates/{c} { allow read: if registered(); }
+    }
+
+    // Everything else (reveal_log, ballots, ops state): no client access.
+  }
+}

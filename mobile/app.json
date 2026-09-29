@@ -1,0 +1,46 @@
+{
+  "expo": {
+    "name": "Qumanity",
+    "slug": "qumanity",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "dark",
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "org.qumanity.app"
+    },
+    "android": {
+      "adaptiveIcon": {
+        "backgroundColor": "#03050f",
+        "foregroundImage": "./assets/android-icon-foreground.png",
+        "backgroundImage": "./assets/android-icon-background.png"
+      },
+      "predictiveBackGestureEnabled": false,
+      "package": "org.qumanity.app"
+    },
+    "web": {
+      "favicon": "./assets/favicon.png",
+      "bundler": "metro"
+    },
+    "plugins": [
+      "expo-router",
+      "expo-status-bar",
+      "expo-font",
+      [
+        "expo-splash-screen",
+        {
+          "image": "./assets/splash-icon.png",
+          "imageWidth": 220,
+          "backgroundColor": "#03050f"
+        }
+      ],
+      "expo-secure-store"
+    ],
+    "scheme": "qumanity",
+    "backgroundColor": "#03050f",
+    "experiments": {
+      "typedRoutes": true
+    }
+  }
+}

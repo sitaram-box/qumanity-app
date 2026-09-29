@@ -1,0 +1,46 @@
+rules_version = '2';
+
+// Storage rules v1. Media paths mirror the Firestore chat they belong to;
+// membership is checked against Firestore (cross-service rules).
+service firebase.storage {
+  match /b/{bucket}/o {
+
+    function registered() { return request.auth != null && request.auth.token.qid is string; }
+    function sizeOk(mb) { return request.resource.size < mb * 1024 * 1024; }
+    function typeOk() {
+      return request.resource.contentType.matches('image/.*')
+        || request.resource.contentType.matches('audio/.*')
+        || request.resource.contentType == 'application/pdf'
+        || request.resource.contentType.matches('application/vnd\\.openxmlformats.*')
+        || request.resource.contentType == 'application/msword';
+    }
+    function inChain(g) { return g in request.auth.token.chain.values(); }
+    function isGroupMember(g) {
+      return registered() && (inChain(g)
+        || firestore.exists(/databases/(default)/documents/groups/$(g)/members/$(request.auth.token.qid)));
+    }
+    function isChatParticipant(c) {
+      return registered()
+        && request.auth.token.acc in firestore.get(/databases/(default)/documents/chats/$(c)).data.participants;
+    }
+
+    // groups/{groupId}/{accountId}/{file}
+    match /groups/{g}/{acc}/{file} {
+      allow read: if isGroupMember(g);
+      allow create: if isGroupMember(g) && acc == request.auth.token.acc && sizeOk(25) && typeOk();
+    }
+
+    // chats/{chatId}/{accountId}/{file}
+    match /chats/{c}/{acc}/{file} {
+      allow read: if isChatParticipant(c);
+      allow create: if isChatParticipant(c) && acc == request.auth.token.acc && sizeOk(25) && typeOk();
+    }
+
+    // profiles/{accountId}/avatar.jpg
+    match /profiles/{acc}/{file} {
+      allow read: if registered();
+      allow write: if registered() && acc == request.auth.token.acc && sizeOk(5)
+        && request.resource.contentType.matches('image/.*');
+    }
+  }
+}

@@ -1,0 +1,558 @@
+/**
+ * Typed calls to the website API. Response shapes mirror Qumanity_DPG
+ * (app.py, board_core.py, social_core.py, wallet_core.py, qoin_core.py).
+ */
+
+import { api } from './client';
+
+// ---------- shared shapes ----------
+export type BoardLevel = 'village' | 'tehsil' | 'district' | 'state' | 'zone' | 'country' | 'continent' | 'earth';
+export const PUBLIC_LEVELS: BoardLevel[] = ['village', 'tehsil', 'district', 'state', 'zone'];
+export const GLOBAL_LEVELS: BoardLevel[] = ['country', 'continent', 'earth'];
+
+export interface PlaceNode {
+  id: string;
+  name: string;
+  [k: string]: unknown;
+}
+export type LocationStruct = Partial<Record<'continent' | 'country' | 'zone' | 'state' | 'district' | 'tehsil' | 'village', PlaceNode>>;
+
+export interface Language {
+  kind?: 'mother' | 'english' | 'daily';
+  name: string;
+  code: string;
+  native: string;
+}
+
+export interface Me {
+  name: string;
+  gender: 'male' | 'female' | 'both';
+  age_years: number;
+  age_category: string;
+  email: string | null;
+  phone: string | null;
+  mother_tongue: string;
+  daily_language: string;
+  languages: Language[];
+  sun_sign: string | null;
+  sun_element: string | null;
+  moon_sign: string | null;
+  moon_nakshatra: string | null;
+  ascendant_sign: string | null;
+  kundali_summary: string | null;
+  birth_location: string;
+  present_location: string;
+  present_location_struct: LocationStruct;
+  is_admin: boolean;
+}
+
+// ---------- auth ----------
+export const login = (privateId: string, pin: string) =>
+  api<{ token: string }>('/login', { body: { private_id: privateId, pin, client: 'app' } });
+
+export interface RegisterBody {
+  name: string;
+  gender: 'male' | 'female' | 'both';
+  dob: string;
+  tob: string;
+  pin: string;
+  language: string;
+  email?: string;
+  phone?: string;
+  birth_location: LocationStruct;
+  present_location: LocationStruct;
+  donation_amount?: number;
+  referral_code?: string;
+  referrer_pin?: string;
+  /** Registering someone else: the helper's own Private ID + PIN make them the referrer. */
+  assisted?: boolean;
+  helper_private_id?: string;
+  helper_pin?: string;
+}
+export interface RegisterResult {
+  private_code: string;
+  /** null when a helper registered someone else — nobody is signed in. */
+  token: string | null;
+  assisted?: boolean;
+  donation: unknown;
+  donation_error: string | null;
+  zodiac: { sun_sign: string; sun_element: string; moon_sign: string; ascendant_sign: string };
+}
+export const register = (b: RegisterBody) =>
+  api<RegisterResult>('/api/auth/register', { body: { ...b, client: 'app' }, timeoutMs: 60_000 });
+
+export const ping = () => api<{ sign?: string }>('/api/zodiac/current', { timeoutMs: 6_000 });
+export const me = () => api<Me>('/api/me');
+export const revealPrivateId = (pin: string) => api<{ private_code: string }>('/api/user/private-code', { body: { pin } });
+export const changePin = (current_pin: string, new_pin: string) =>
+  api<{ token: string }>('/api/user/pin', { body: { current_pin, new_pin, client: 'app' } });
+export const requestPinReset = (private_id: string, channel: 'phone' | 'email') =>
+  api<{ status: string; masked_target: string; dev_code?: string }>('/api/auth/forgot-pin/request', { body: { private_id, channel } });
+export const verifyPinReset = (private_id: string, otp: string, new_pin: string) =>
+  api<{ status: string }>('/api/auth/forgot-pin/verify', { body: { private_id, otp, new_pin } });
+export const recoverId = (body: Record<string, string>) =>
+  api<{ status: string; reference: string }>('/api/auth/recover-id', { body });
+
+// ---------- registration helpers ----------
+export const zodiacPreview = (dob: string) =>
+  api<{ sign: string; element: string; age_name: string; age_range: string }>(`/api/zodiac/preview?dob=${encodeURIComponent(dob)}`);
+export const donationPreview = (amount: number, referrer: boolean) =>
+  api<{ amount: number; rows: [string, number][]; qoins: Record<string, number[]>; unit: string }>(
+    `/api/registration/donation-preview?amount=${amount}&referrer=${referrer ? 1 : 0}`,
+  );
+
+// ---------- collective board ----------
+export interface BoardPost {
+  id: number;
+  author: string;
+  mine: boolean;
+  content: string;
+  status: 'active' | 'frozen' | 'elevated' | 'removed';
+  score: number;
+  my_vote: -1 | 0 | 1 | null;
+  created_at: string;
+  voting_end: string;
+  threshold: number;
+  window_days: number;
+  origin: { level: string; score: number } | null;
+  elevated_to: string | null;
+  comments: { who: string; text: string; at: string }[];
+  can_vote: boolean;
+  can_comment: boolean;
+}
+export interface Board {
+  level: BoardLevel;
+  label: string;
+  group: string;
+  can_post: boolean;
+  can_pay_post: boolean;
+  post_price: number | null; // in local currency, not raw Qoins — always show with post_price_qoins + currency_symbol
+  post_price_qoins: number[] | null;
+  currency: string | null;
+  currency_symbol: string | null;
+  currency_name: string | null;
+  threshold: number;
+  window_days: number;
+  next: string | null;
+  posts: BoardPost[];
+}
+export const board = (level: BoardLevel) => api<Board>(`/api/board/${level}`);
+export const createPost = (level: BoardLevel, content: string) => api<{ id: number }>('/api/board/post', { body: { level, content } });
+export const vote = (post_id: number, value: -1 | 0 | 1) => api<{ score: number }>('/api/board/vote', { body: { post_id, value } });
+export const comment = (post_id: number, text: string) => api<{ status: string }>('/api/board/comment', { body: { post_id, text } });
+export const removedPosts = () =>
+  api<{ posts: { id: number; level: string; group: string; content: string; score: number; at: string }[] }>('/api/board/removed');
+
+// ---------- Q-Punch council ----------
+export interface QPunch {
+  group: string;
+  label: string;
+  level: BoardLevel;
+  residents: number;
+  election_min: number;
+  election_open: boolean;
+  cycle: { kind: string; sign?: string; element?: string; lead?: string };
+  seats: { seat: number; title: string; text: string; filled: boolean; name?: string | null }[];
+  agents: number;
+  can_volunteer: boolean;
+  is_volunteer: boolean;
+  is_admin: boolean;
+  /** The monthly 4-week sign election -- only on the pilot village's page (Rohini Sector 24). */
+  election?: ElectionSummary | null;
+  guide?: ElectionGuide | null;
+}
+export const qpunch = (level: BoardLevel) => api<QPunch>(`/api/qpunch/${level}`);
+export const volunteer = (skill: string) => api<{ status: string }>('/api/qpunch/volunteer', { body: { skill } });
+
+// ---------- monthly sign election (election_core.py): week 1 stand, weeks 2-3 vote, week 4 results ----------
+export interface ElectionWeek { week: 1 | 2 | 3 | 4; key: string; title: string; start: string; end: string; text: string }
+export interface ElectionCandidate { user_id: number; name: string; reason: string; why_vote: string; changes: string; votes: number | null }
+export interface ElectionSummary {
+  village_id: string;
+  sign: string;
+  element: string;
+  year: number;
+  status: 'nomination' | 'voting' | 'closed';
+  week: number;
+  weeks: ElectionWeek[];
+  candidates: { male: ElectionCandidate[]; female: ElectionCandidate[] };
+  turnout: number;
+  eligible_voters: number;
+  winners: { male: string | null; female: string | null; male_votes: number; female_votes: number; term_start: string; term_end: string } | null;
+  cycle_id: number;
+}
+export interface ElectionGuide {
+  my_sign: string | null;
+  my_gender: string;
+  role: 'outside' | 'watch' | 'candidate' | 'can_stand' | 'voter_soon' | 'can_vote' | 'voted' | 'results';
+  text: string;
+  action: 'stand' | 'vote' | null;
+  week: number;
+  nominated: boolean;
+  voted_genders: string[];
+  can_stand: boolean;
+  can_vote: boolean;
+}
+export const electionNominate = (form: { reason: string; why_vote?: string; changes?: string; past_work?: string }) =>
+  api<{ status: string }>('/api/election/nominate', { body: form });
+export const electionVote = (candidate_user_id: number, gender: 'male' | 'female') =>
+  api<{ status: string }>('/api/election/vote', { body: { candidate_user_id, gender } });
+
+// ---------- village sub-groups ----------
+export interface SubGroup {
+  id: number;
+  name: string;
+  description: string;
+  my_status: 'pending' | 'approved' | 'declined' | null;
+  members: number;
+  pending?: { user_id: number; name: string }[];
+}
+export const subgroups = () => api<{ village: string | null; is_admin: boolean; groups: SubGroup[] }>('/api/subgroups');
+export const createSubgroup = (name: string, description: string) => api<{ id: number }>('/api/subgroups', { body: { name, description } });
+export const joinSubgroup = (id: number) => api<{ status: string }>(`/api/subgroups/${id}/join`, { body: {} });
+export const decideSubgroup = (id: number, user_id: number, approve: boolean) =>
+  api<{ status: string }>(`/api/subgroups/${id}/decide`, { body: { user_id, approve } });
+
+// ---------- chats (village sub-groups, personal groups, private one-to-one) ----------
+export interface ChatMessage {
+  who?: string;
+  mine: boolean;
+  text: string;
+  at: string;
+}
+export type ChatKind = 'sub' | 'group' | 'private';
+export async function chatLoad(kind: ChatKind, id: number): Promise<{ title: string; messages: ChatMessage[]; extra?: unknown }> {
+  if (kind === 'sub') {
+    const r = await api<{ name: string; messages: ChatMessage[] }>(`/api/chat/${id}`);
+    return { title: r.name, messages: r.messages };
+  }
+  if (kind === 'group') {
+    const r = await api<{ name: string; messages: ChatMessage[]; members: { name: string; you: boolean }[]; is_owner: boolean }>(
+      `/api/people/groups/${id}/messages`,
+    );
+    return { title: r.name, messages: r.messages, extra: r };
+  }
+  const r = await api<{ name: string; with: string; left: boolean; other_left: boolean; other_account_id: string | null; messages: ChatMessage[] }>(
+    `/api/people/chats/${id}`,
+  );
+  return { title: r.name, messages: r.messages, extra: r };
+}
+export function chatSend(kind: ChatKind, id: number, text: string) {
+  const path = kind === 'sub' ? `/api/chat/${id}` : kind === 'group' ? `/api/people/groups/${id}/messages` : `/api/people/chats/${id}`;
+  return api<{ status: string }>(path, { body: { text } });
+}
+
+// ---------- personal timeline ----------
+// 2026-09-28: groups moved from 5 fixed "kind" slots to a category with any number of groups
+// (family/friends/business/custom); Family starts with Paternal/Maternal/Spouse-Family, Friends
+// with one "Friends" group, Business empty except the Founder's own "Qumanity Team".
+export type GroupCategory = 'family' | 'friends' | 'business' | 'custom';
+export const GROUP_CATEGORIES: GroupCategory[] = ['family', 'friends', 'business', 'custom'];
+export interface PersonalGroup {
+  id: number;
+  category: GroupCategory;
+  name: string;
+  members: number;
+  mine: boolean;
+  owner_name?: string;
+  business_name: string | null;
+  business_sector: string | null;
+  business_services: string | null;
+}
+export type PersonalGroups = Record<GroupCategory, { owned: PersonalGroup[]; joined: PersonalGroup[] }>;
+/** One Account ID per present-location stay. Only one is active; the readable account_id is never shown. */
+export interface AccountIdRow {
+  id: number;
+  account_id: string;
+  search_code: string;
+  is_current: number;
+  created_at: string;
+  present_location_json: string;
+}
+export interface AccountIdRequest {
+  id: number;
+  present_location_json: string;
+  status: 'pending' | 'approved' | 'rejected';
+  created_at: string;
+  decided_at: string | null;
+}
+export const peopleMe = () =>
+  api<{ search_code: string; account_history: AccountIdRow[]; account_requests?: AccountIdRequest[] }>('/api/people/me');
+
+// ---------- council / admin approvals ----------
+export interface AdminAccountRequest {
+  id: number;
+  user_id: number;
+  name: string;
+  present_location_json: string;
+  created_at: string;
+}
+export const adminAccountRequests = () => api<{ requests: AdminAccountRequest[] }>('/api/admin/account-ids');
+export const decideAccountRequest = (id: number, approve: boolean) =>
+  api<{ status: string }>(`/api/admin/account-ids/${id}/decide`, { body: { approve } });
+export interface AdminReview {
+  id: number;
+  rating: number;
+  text: string;
+  allow_public: boolean;
+  approved: boolean;
+  name: string;
+  place: string;
+  at: string;
+}
+export const adminReviews = () => api<{ reviews: AdminReview[] }>('/api/admin/reviews');
+export const approveReview = (id: number, approved: boolean) =>
+  api<{ status: string }>(`/api/admin/reviews/${id}/approve`, { body: { approved } });
+
+/** "Village › District › State" from a stored present_location_json. */
+export function placeLine(json: string): string {
+  try {
+    const l = JSON.parse(json) as LocationStruct;
+    return [l.village, l.tehsil, l.district, l.state]
+      .filter(Boolean)
+      .map((n) => n!.name)
+      .slice(0, 3)
+      .join(' › ') || (l.country?.name ?? '—');
+  } catch {
+    return '—';
+  }
+}
+export const personalGroups = () => api<PersonalGroups>('/api/people/groups');
+export const createGroup = (category: GroupCategory, name: string) => api<{ id: number }>('/api/people/groups/create', { body: { category, name } });
+export const moveGroup = (groupId: number, category: GroupCategory) => api<{ status: string }>(`/api/people/groups/${groupId}/move`, { body: { category } });
+export const renameGroup = (groupId: number, name: string) => api<{ status: string }>(`/api/people/groups/${groupId}/rename`, { body: { name } });
+export const saveBusiness = (groupId: number, b: { name: string; sector: string; services: string }) =>
+  api<{ status: string }>(`/api/people/groups/${groupId}/business`, { body: b });
+/** Find someone by their 12-digit search code. (The website also returns the readable Account ID; the app never shows it.) */
+export const searchPerson = (q: string) =>
+  api<{ user_id: number; name: string; gender: string; place: string | null }>(`/api/people/search?q=${encodeURIComponent(q)}`);
+export const invite = (group_id: number, user_id: number) => api<{ status: string }>('/api/people/invite', { body: { group_id, user_id } });
+export const messageRequest = (user_id: number, text: string) => api<{ status: string }>('/api/people/message', { body: { user_id, text } });
+export interface InboxItem {
+  id: number;
+  kind: 'message' | 'group' | 'rejoin';
+  first_message: string | null;
+  created_at: string;
+  status: 'pending' | 'waiting';
+  from_name: string;
+  group_name: string | null;
+  group_category: string | null;
+  chat_name: string | null; // set only for kind === 'rejoin' — the Private Group they want back into
+}
+export const inbox = () => api<{ requests: InboxItem[] }>('/api/people/inbox');
+export const decide = (id: number, decision: 'accept' | 'decline' | 'waiting') =>
+  api<{ status: string }>(`/api/people/inbox/${id}/decide`, { body: { decision } });
+
+// ---------- account IDs: one per present-location stay, kept forever; only one is ever "current" ----------
+export const switchAccount = (rowId: number) => api<{ status: string }>('/api/people/account-ids/switch', { body: { row_id: rowId } });
+export const requestNewAccount = (present_location: Record<string, unknown>) =>
+  api<{ status: string }>('/api/people/account-ids/request', { body: { present_location } });
+
+// ---------- wallet ----------
+export interface QoinsConfig {
+  currency: string;
+  currency_name: string;
+  symbol: string;
+  denominations: number[];
+  max_donation: number;
+  village_prices: Record<string, unknown>;
+  paid_prices: Record<string, Record<string, unknown>>;
+}
+export const qoinsConfig = () => api<QoinsConfig>('/api/qoins/config');
+export const walletBalance = () =>
+  api<{ balance_qoins: number; has_locked_share: boolean; transactions: { amount_qoins: number; reason: string; locked: number; created_at: string }[] }>(
+    '/api/wallet/balance',
+  );
+/** A location group's wallet; Earth's id is "EARTH" (website convention). */
+export const groupWallet = (level: BoardLevel, id: string) =>
+  api<{ balance_qoins: number }>(`/api/wallet/balance/${level}/${encodeURIComponent(id)}`);
+export interface WalletWeek {
+  year: number;
+  week: number;
+  start: string;
+  end: string;
+  change: number;
+  rows: { amount: number; reason: string; at: string }[];
+}
+export const walletHistory = () => api<{ balance_qoins: number; weeks: WalletWeek[]; older_weeks_hidden: number }>('/api/wallet/history');
+export const topUpPreview = (amount: number) =>
+  api<{ amount: number; qoins: number[]; topup: { own: number; village: number; own_qoins: number[]; village_qoins: number[] } | null }>(
+    `/api/qoins/preview?amount=${amount}`,
+  );
+export const simulatedTopUp = (amount_rupees: number) =>
+  api<{ status: string; amount_rupees: number; distribution: unknown }>('/api/wallet/donate', { body: { amount_rupees } });
+
+// ---------- election history ----------
+// Party options and Lok Sabha years are per-country and can move (election_core.py: parties_for_country,
+// loksabha_years) -- council-editable, never hardcoded here. loksabha_years is always [past, past, next],
+// rolling forward on its own once the "next" year shown has itself passed.
+export interface ElectionHistory {
+  party: {
+    loksabha_years: number[];
+    loksabha: Record<string, string | null>;
+    vidhansabha: { last: string | null; next: string | null };
+  };
+  qpunch: { year: number; sign: string; candidate: string; won: boolean }[];
+  parties: [string, string][]; // [code, label], e.g. ["BJP", "BJP / NDA Alliance"] ... ["NOTVOTED", "Not Voted"]
+}
+export const electionHistory = () => api<ElectionHistory>('/api/election-history');
+export const saveElectionHistory = (party: ElectionHistory['party']) => api<{ status: string }>('/api/election-history', { body: party });
+
+// ---------- settings ----------
+export const setDailyLanguage = (daily: string) => api<{ languages: Language[] }>('/api/user/languages', { body: { daily } });
+
+// ---------- statistics (location explorer) ----------
+export interface PlaceStats {
+  total_humans: number;
+  elements: Record<string, number>;
+  gender: Record<string, number>;
+  signs: Record<string, number>;
+  age_bands: { code: string; count: number; label: string }[];
+}
+export const placeStats = (level: BoardLevel, id: string) =>
+  api<PlaceStats>(level === 'earth' ? '/api/earth/stats' : `/api/location/stats/${level}/${encodeURIComponent(id)}`);
+
+/** The 10 countries of the Indian Sub-continent (app.py's SUBCONTINENT_COUNTRY_IDS) — every
+ * user's present location is one of these; India is the pilot country. */
+export const SUBCONTINENT_COUNTRIES: { id: string; name: string }[] = [
+  { id: 'O_AS_IND', name: 'India' },
+  { id: 'O_AS_NPL', name: 'Nepal' },
+  { id: 'O_AS_BTN', name: 'Bhutan' },
+  { id: 'O_AS_BGD', name: 'Bangladesh' },
+  { id: 'O_AS_MMR', name: 'Myanmar' },
+  { id: 'O_AS_LKA', name: 'Sri Lanka' },
+  { id: 'O_AS_PAK', name: 'Pakistan' },
+  { id: 'O_AS_BLC', name: 'Balochistan' },
+  { id: 'O_AS_AFG', name: 'Afghanistan' },
+  { id: 'O_AS_MDV', name: 'Maldives' },
+];
+
+// ---------- poems marquee (docs: same poems as the website, /api/poems/*, no sign-in needed) ----------
+export interface PoemsMeta {
+  count: number;
+  languages: { code: string; label: string; available: boolean }[];
+  personal: boolean;
+  default?: string;
+}
+export interface Poem {
+  index: number;
+  id: number | string;
+  marker: string;
+  text: string;
+}
+export const poemsMeta = () => api<PoemsMeta>('/api/poems/meta');
+export const poem = (lang: string, index: number) => api<Poem>(`/api/poems/${lang}/${index}`);
+
+// ---------- notifications (unread Personal-timeline chats + pending people-requests) ----------
+export interface NotificationSummary {
+  unread_chats: number;
+  unread_private: number;
+  unread_groups: number;
+  pending_requests: number;
+  total: number;
+  /** Something to do in this month's election (stand in week 1, vote in weeks 2-3), else null. */
+  election?: { sign: string; week: number; action: 'stand' | 'vote'; text: string } | null;
+}
+export const notificationSummary = () => api<NotificationSummary>('/api/notifications/summary');
+
+// ---------- Private Groups: 1:1 chats opened by an accepted message request (2026-09-28) ----------
+// Both members are admins: either can rename the chat or leave it (history stays readable, but a
+// left member can't send or see new messages until the other approves a rejoin request).
+export interface PrivateChat {
+  chat_id: number;
+  name: string;
+  with: string;
+  left: boolean;
+  last: string | null;
+  at: string | null;
+}
+export const privateChats = () => api<{ chats: PrivateChat[] }>('/api/people/chats');
+export const renamePrivateChat = (chatId: number, name: string) => api<{ status: string }>(`/api/people/chats/${chatId}/rename`, { body: { name } });
+export const leavePrivateChat = (chatId: number) => api<{ status: string }>(`/api/people/chats/${chatId}/leave`, { body: {} });
+export const requestRejoinChat = (chatId: number) => api<{ status: string }>(`/api/people/chats/${chatId}/request-rejoin`, { body: {} });
+
+// ---------- Private account: relationship status + work profile (2026-09-28) ----------
+export type RelationshipStatus = 'single' | 'married' | 'divorced_widowed';
+export type WorkProfile = 'unemployed_student' | 'employed' | 'govt' | 'security' | 'medical' | 'other';
+export interface PersonalDetails {
+  relationship_status: RelationshipStatus | null;
+  has_children: boolean | null;
+  sons_count: number;
+  daughters_count: number;
+  work_profile: WorkProfile | null;
+  work_profile_other: string | null;
+}
+export const personalDetails = () => api<PersonalDetails>('/api/profile/personal-details');
+export const savePersonalDetails = (d: Partial<PersonalDetails>) => api<{ status: string }>('/api/profile/personal-details', { body: d });
+
+// ---------- app tour + the one-time rating & review (website review_core.py) ----------
+export const REVIEW_MAX_CHARS = 100;
+export interface Onboarding {
+  tour: 'done' | 'skipped' | null;
+  review_done: boolean;
+}
+export const onboarding = () => api<Onboarding>('/api/onboarding');
+export const setTour = (status: 'done' | 'skipped') => api<Onboarding>('/api/onboarding/tour', { body: { status } });
+export const submitReview = (rating: number, text: string, allow_public: boolean) =>
+  api<{ status: string }>('/api/reviews', { body: { rating, text, allow_public, client: 'app' } });
+export const declineReview = () => api<{ status: string }>('/api/reviews', { body: { decline: true } });
+export interface PublicReviews {
+  count: number;
+  average: number | null;
+  reviews: { rating: number; text: string; name: string; place: string; at: string }[];
+}
+export const publicReviews = () => api<PublicReviews>('/api/reviews/public');
+
+// ---------- election percentages: National Election on Country pages, State Election on State pages ----------
+export interface ElectionSentiment {
+  level: 'country' | 'state';
+  label: string;
+  total_responses: number;
+  parties: { code: string; label: string; count: number; pct: number }[];
+}
+export const electionSentiment = (level: 'country' | 'state', id: string) =>
+  api<ElectionSentiment>(`/api/election-sentiment/${level}/${encodeURIComponent(id)}`);
+
+// ---------- website dashboard parity (2026-09-29): time-box, moon, karma, perception, referrer, profile change ----------
+export interface TimeBox {
+  date: string;
+  time: string;
+  tz_abbr: string;
+  place: string;
+  sunrise: string;
+  sunset: string;
+  note?: string;
+  panchang: { vaar: string; tithi: string; nakshatra: string; chandra_maas: string; surya_maas: string };
+  sky: { ascendant: string; houses: { n: number; sign: string; asc: boolean; planets: { planet: string; text: string }[] }[] };
+}
+export const timebox = () => api<TimeBox>('/api/timebox');
+export interface LunarPhase {
+  current: { phase_name: string; illuminated_fraction: number };
+  upcoming: { date: string; time: string; event_type: string; description: string; nakshatra?: string; zodiac_sign?: string; is_visible_in_india?: boolean }[];
+}
+export const lunarPhase = () => api<LunarPhase>('/api/lunar/phase');
+export interface Karma {
+  score: { commercial: number; noncommercial: number; total: number };
+  history: { points?: number; reason?: string; at?: string; [k: string]: unknown }[];
+}
+export const karma = () => api<Karma>('/api/karma/me');
+
+export interface Perception {
+  pro_count: number;
+  anti_count: number;
+  can_vote: boolean;
+  my_vote: 'pro' | 'anti' | null;
+  vote_reason?: string;
+  voting_year: number;
+  window: { status: string; window_start: string; window_end: string };
+}
+export const perception = (kind: 'country' | 'zone', id: string) => api<Perception>(`/api/perception/${kind}/${encodeURIComponent(id)}`);
+export const perceptionVote = (kind: 'country' | 'zone', id: string, vote: 'pro' | 'anti') =>
+  api<{ status: string }>(`/api/perception/${kind}/${encodeURIComponent(id)}/vote`, { body: { vote } });
+
+export const referrerMe = () => api<{ code: { code: string; uses: number } | null; pending: boolean }>('/api/referrer/me');
+export const referrerApply = (note: string) => api<{ status: string }>('/api/referrer/apply', { body: { note } });
+
+/** Name/email/phone changes, and DOB/time/places which only a council can approve. */
+export const requestProfileChange = (fields: { name?: string; email?: string; phone?: string; dob?: string; tob?: string; reason: string }) =>
+  api<{ status?: string; message?: string }>('/api/dashboard/edit-request', { body: fields });
