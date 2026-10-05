@@ -22,7 +22,7 @@ export function ElectionSentimentCard({ level, id }: { level: 'country' | 'state
     };
   }, [level, id]);
 
-  if (!data) return null;
+  if (!data || !data.visible || !Array.isArray(data.parties)) return null;
   const parties = data.parties.filter((p) => p.code !== 'NOTVOTED' || p.count > 0);
 
   return (

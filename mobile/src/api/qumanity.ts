@@ -43,6 +43,9 @@ export interface Me {
   birth_location: string;
   present_location: string;
   present_location_struct: LocationStruct;
+  birth_location_struct?: LocationStruct;
+  /** Which of the member's own (up to 3) languages the UI should use -- set on website or app. */
+  preferred_language?: string | null;
   is_admin: boolean;
 }
 
@@ -61,9 +64,8 @@ export interface RegisterBody {
   phone?: string;
   birth_location: LocationStruct;
   present_location: LocationStruct;
+  /** Self-registration: the amount is paid online right after the account exists (payment order, purpose "registration"). */
   donation_amount?: number;
-  referral_code?: string;
-  referrer_pin?: string;
   /** Registering someone else: the helper's own Private ID + PIN make them the referrer. */
   assisted?: boolean;
   helper_private_id?: string;
@@ -76,6 +78,8 @@ export interface RegisterResult {
   assisted?: boolean;
   donation: unknown;
   donation_error: string | null;
+  /** Rupees still to pay online (self-registration with a donation); nothing is credited until the payment is verified. */
+  donation_pending_amount?: number;
   zodiac: { sun_sign: string; sun_element: string; moon_sign: string; ascendant_sign: string };
 }
 export const register = (b: RegisterBody) =>
@@ -379,8 +383,14 @@ export const topUpPreview = (amount: number) =>
   api<{ amount: number; qoins: number[]; topup: { own: number; village: number; own_qoins: number[]; village_qoins: number[] } | null }>(
     `/api/qoins/preview?amount=${amount}`,
   );
-export const simulatedTopUp = (amount_rupees: number) =>
-  api<{ status: string; amount_rupees: number; distribution: unknown }>('/api/wallet/donate', { body: { amount_rupees } });
+// ---------- real donations (payment_core.py): order -> Razorpay Checkout -> verify; Qoins credit only after verify ----------
+export type PaymentOrder =
+  | { mode: 'simulated'; local_order_id: number; amount_rupees: number }
+  | { mode: 'razorpay'; local_order_id: number; razorpay_order_id: string; amount_rupees: number; amount_paise: number; currency: string; key_id: string };
+export const paymentOrder = (amount_rupees: number, purpose: 'donation' | 'registration' = 'donation') =>
+  api<PaymentOrder>('/api/payment/order', { body: { amount_rupees, purpose } });
+export const paymentVerify = (body: { local_order_id: number; razorpay_payment_id?: string; razorpay_order_id?: string; razorpay_signature?: string }) =>
+  api<{ status: string; amount_rupees: number; distribution: unknown }>('/api/payment/verify', { body });
 
 // ---------- election history ----------
 // Party options and Lok Sabha years are per-country and can move (election_core.py: parties_for_country,
@@ -504,12 +514,18 @@ export interface PublicReviews {
 export const publicReviews = () => api<PublicReviews>('/api/reviews/public');
 
 // ---------- election percentages: National Election on Country pages, State Election on State pages ----------
-export interface ElectionSentiment {
-  level: 'country' | 'state';
-  label: string;
-  total_responses: number;
-  parties: { code: string; label: string; count: number; pct: number }[];
-}
+// The backend gates this behind visibility_core.election_history_visibility (hidden until 2028,
+// an early-unlock threshold, or an Admin override) -- when hidden it returns the `visible: false`
+// shape below with no label/total_responses/parties at all, not just empty ones.
+export type ElectionSentiment =
+  | { visible: false; level: 'country' | 'state'; reason: string }
+  | {
+      visible: true;
+      level: 'country' | 'state';
+      label: string;
+      total_responses: number;
+      parties: { code: string; label: string; count: number; pct: number }[];
+    };
 export const electionSentiment = (level: 'country' | 'state', id: string) =>
   api<ElectionSentiment>(`/api/election-sentiment/${level}/${encodeURIComponent(id)}`);
 
@@ -538,8 +554,11 @@ export interface Karma {
 export const karma = () => api<Karma>('/api/karma/me');
 
 export interface Perception {
-  pro_count: number;
-  anti_count: number;
+  /** null while the results are hidden (results_visible false) -- the Founder opens them. */
+  pro_count: number | null;
+  anti_count: number | null;
+  results_visible?: boolean;
+  results_reason?: string;
   can_vote: boolean;
   my_vote: 'pro' | 'anti' | null;
   vote_reason?: string;
@@ -556,3 +575,26 @@ export const referrerApply = (note: string) => api<{ status: string }>('/api/ref
 /** Name/email/phone changes, and DOB/time/places which only a council can approve. */
 export const requestProfileChange = (fields: { name?: string; email?: string; phone?: string; dob?: string; tob?: string; reason: string }) =>
   api<{ status?: string; message?: string }>('/api/dashboard/edit-request', { body: fields });
+
+// ---------- website parity (2026-10-06) ----------
+export const collectiveKarma = (level: BoardLevel, id: string) =>
+  api<{ points: number }>(`/api/karma/collective/${level}/${encodeURIComponent(id)}`);
+export interface Scoreboard {
+  total_members: number;
+  zones: { id: string; name: string; rank: number; total_users: number }[];
+  states: { id: string; name: string; rank: number; total_users: number; zone_id: string }[];
+}
+export const scoreboardIndia = () => api<Scoreboard>('/api/scoreboard/india');
+export interface FounderMessage { title: string; preview_text: string; full_text: string; language: string; published_at: string }
+export const founderMessage = (lang = 'en') => api<FounderMessage>(`/api/founder-message?lang=${encodeURIComponent(lang)}`);
+export interface MoonKundali {
+  chart_svg: string;
+  ascendant_note?: string;
+  table: { point: string; sign: string; element: string; nakshatra: string; nakshatra_lord: string; pada: number; degree: string; house: number }[];
+  house_strength: Record<string, { sign: string; occupants: string[]; status: 'strong' | 'weak' | 'neutral' }>;
+  elemental_balance: { counts: Record<string, number>; dominant: string };
+  dasha: { current: { lord: string; start: string; end: string }; next?: { lord: string; start: string; end: string }[] };
+}
+export const myKundali = () => api<MoonKundali>('/api/me/kundali');
+export const setPreferredLanguage = (preferred: string) =>
+  api<{ languages: Language[]; preferred: string | null }>('/api/user/languages', { body: { preferred } });

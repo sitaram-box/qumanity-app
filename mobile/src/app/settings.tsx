@@ -4,7 +4,7 @@ import { router } from 'expo-router';
 import { useState } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import { LANGUAGE_GROUPS } from '@shared';
-import { changePin, setDailyLanguage } from '@/api/qumanity';
+import { changePin, setDailyLanguage, setPreferredLanguage } from '@/api/qumanity';
 import { CodeInput } from '@/components/CodeInput';
 import { BackHeader, Button, Chip, ErrorText, Label, Screen, ListRow } from '@/components/ui';
 import { useApp } from '@/state/app';
@@ -25,6 +25,16 @@ export default function Settings() {
     setLangMsg(undefined);
     try {
       await setDailyLanguage(me!.daily_language === name ? '' : name);
+      await refreshMe();
+    } catch (e) {
+      setLangMsg((e as Error).message);
+    }
+  }
+
+  async function pickPreferred(code: string) {
+    setLangMsg(undefined);
+    try {
+      await setPreferredLanguage(code);
       await refreshMe();
     } catch (e) {
       setLangMsg((e as Error).message);
@@ -65,6 +75,14 @@ export default function Settings() {
         <View style={styles.wrap}>
           {choices.map((l) => (
             <Chip key={l.name} label={l.native === l.name ? l.name : `${l.native} · ${l.name}`} selected={me.daily_language === l.name} onPress={() => pickDaily(l.name)} />
+          ))}
+        </View>
+        <Text style={[styles.meta, { marginTop: space.md, marginBottom: space.sm }]}>
+          Preferred language — the website shows itself in this language (saved to your account, so it follows you):
+        </Text>
+        <View style={styles.wrap}>
+          {me.languages.map((l) => (
+            <Chip key={l.code} label={l.native} selected={(me.preferred_language || 'en') === l.code} onPress={() => pickPreferred(l.code)} />
           ))}
         </View>
         <ErrorText>{langMsg}</ErrorText>

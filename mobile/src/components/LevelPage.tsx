@@ -43,6 +43,7 @@ export function LevelPage({ accent, levels }: { title?: string; note?: string; a
   const [level, setLevel] = useState<Q.BoardLevel>(available[0] ?? levels[0]);
   const [wallet, setWallet] = useState<number | null>(null);
   const [members, setMembers] = useState<number | null>(null);
+  const [karma, setKarma] = useState<number | null>(null);
   // Only the paid-posting Composer needs a currency value (post prices are a real payment ask);
   // the group wallet itself never shows currency, only members + Qoins (docs/qoins_wallet_system.md).
   const [currency, setCurrency] = useState('₹');
@@ -58,7 +59,9 @@ export function LevelPage({ accent, levels }: { title?: string; note?: string; a
   useEffect(() => {
     setWallet(null);
     setMembers(null);
+    setKarma(null);
     if (!placeId) return;
+    Q.collectiveKarma(level, placeId).then((k) => setKarma(k.points), () => undefined);
     Q.groupWallet(level, placeId).then((w) => setWallet(w.balance_qoins), () => undefined);
     Q.placeStats(level, placeId).then((s) => setMembers(s.total_humans), () => undefined);
   }, [level, placeId]);
@@ -95,6 +98,7 @@ export function LevelPage({ accent, levels }: { title?: string; note?: string; a
           </View>
           <Stat icon="people" value={members} label="members" />
           <Stat qoin value={wallet} label="Qoins" />
+          <Stat icon="ribbon" value={karma} label="Karma" />
         </View>
         <View style={styles.actions}>
           <Action icon="apps" label="Groups" onPress={() => setGroups(true)} />

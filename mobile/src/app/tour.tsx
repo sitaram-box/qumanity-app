@@ -53,6 +53,18 @@ const SLIDES: Slide[] = [
     ],
   },
   {
+    key: 'locations',
+    icon: 'map',
+    color: timelineColors.global,
+    title: 'Global & Public, tier by tier',
+    body: 'Both of those tabs are nested location tiers you can drill into.',
+    points: [
+      { icon: 'earth', text: 'Global: Earth → your Continent → your Country' },
+      { icon: 'navigate', text: 'Public: your Zone → State → District → Tehsil → Village' },
+      { icon: 'checkmark-circle', text: "Public's tiers are exactly the present location you chose at registration" },
+    ],
+  },
+  {
     key: 'board',
     icon: 'chatbubbles',
     color: timelineColors.public,
@@ -110,6 +122,8 @@ const SLIDES: Slide[] = [
     points: [
       { icon: 'eye-off', text: 'Private ID stays hidden; your PIN reveals it for 30 seconds' },
       { icon: 'wallet', text: 'Wallet — your Qoins and weekly history' },
+      { icon: 'language', text: 'Language — switch Qumanity to your Mother tongue, English or a 3rd language, in Settings' },
+      { icon: 'time', text: 'Time-box — the current time, weather and Vedic calendar for where you live' },
       { icon: 'power', text: 'Sign out any time with the power icon at the top' },
     ],
   },
@@ -154,9 +168,14 @@ export default function Tour() {
           {index + 1} / {SLIDES.length}
         </Text>
         {!last && (
-          <Pressable onPress={() => finish('skipped')} accessibilityRole="button" hitSlop={12} style={styles.skip}>
-            <Text style={styles.skipText}>Skip</Text>
-          </Pressable>
+          <View style={styles.topActions}>
+            <Pressable onPress={() => finish('skipped')} accessibilityRole="button" hitSlop={12} style={styles.skip}>
+              <Text style={styles.skipText}>Skip</Text>
+            </Pressable>
+            <Pressable onPress={() => finish('skipped')} accessibilityRole="button" accessibilityLabel="Exit tutorial" hitSlop={12} style={styles.exit}>
+              <Ionicons name="close" size={18} color={colors.dim} />
+            </Pressable>
+          </View>
         )}
       </View>
 
@@ -207,8 +226,10 @@ const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.ink },
   top: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: space.lg, paddingTop: space.sm, height: 44 },
   count: { color: colors.faint, fontFamily: fonts.medium, fontSize: 12 },
+  topActions: { flexDirection: 'row', alignItems: 'center', gap: space.sm },
   skip: { paddingHorizontal: space.md, height: 30, borderRadius: radius.pill, backgroundColor: colors.panel, justifyContent: 'center' },
   skipText: { color: colors.dim, fontFamily: fonts.bold, fontSize: 13 },
+  exit: { width: 30, height: 30, borderRadius: radius.pill, backgroundColor: colors.panel, alignItems: 'center', justifyContent: 'center' },
   slide: { paddingHorizontal: space.xl, paddingTop: space.lg, alignItems: 'center' },
   hero: { width: 148, height: 148, borderRadius: 40, alignItems: 'center', justifyContent: 'center', borderWidth: 1, marginBottom: space.xl },
   title: { color: colors.text, fontFamily: fonts.displayBold, fontSize: 24, textAlign: 'center' },

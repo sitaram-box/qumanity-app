@@ -81,6 +81,7 @@ function Navigator({ ready }: { ready: boolean }) {
   return (
     <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: colors.ink } }}>
       <Stack.Screen name="index" />
+      <Stack.Screen name="founders-message" />
       <Stack.Protected guard={!signedIn}>
         <Stack.Screen name="welcome" />
         <Stack.Screen name="login" />

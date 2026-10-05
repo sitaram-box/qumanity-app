@@ -6,6 +6,7 @@
 import { useFocusEffect } from 'expo-router';
 import { useCallback, useState } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
+import { SvgXml } from 'react-native-svg';
 import * as Q from '@/api/qumanity';
 import { BackHeader, Card, ErrorText, Screen, SectionTitle } from '@/components/ui';
 import { useApp } from '@/state/app';
@@ -16,6 +17,7 @@ export default function Sky() {
   const [tb, setTb] = useState<Q.TimeBox | null>(null);
   const [moon, setMoon] = useState<Q.LunarPhase | null>(null);
   const [karma, setKarma] = useState<Q.Karma | null>(null);
+  const [chart, setChart] = useState<Q.MoonKundali | null>(null);
   const [error, setError] = useState<string>();
 
   useFocusEffect(
@@ -23,6 +25,7 @@ export default function Sky() {
       Q.timebox().then(setTb, (e) => setError((e as Error).message));
       Q.lunarPhase().then(setMoon, () => undefined);
       Q.karma().then(setKarma, () => undefined);
+      Q.myKundali().then(setChart, () => undefined);
     }, []),
   );
 
@@ -71,6 +74,20 @@ export default function Sky() {
             {me.ascendant_sign && <Row k="Ascendant" v={me.ascendant_sign} />}
             {me.kundali_summary && <Text style={[type.body, { marginTop: space.sm }]}>{me.kundali_summary}</Text>}
           </Card>
+          {chart && (
+            <Card>
+              <Text style={styles.h}>Vedic chart · Moon-based (Chandra Lagna)</Text>
+              <View style={styles.chart}>
+                <SvgXml xml={chart.chart_svg} width="100%" height="100%" />
+              </View>
+              {chart.table.map((r) => (
+                <Row key={r.point} k={`${r.point} · H${r.house}`} v={`${r.sign} ${r.degree} · ${r.nakshatra} ${r.pada}`} />
+              ))}
+              <Row k="Dominant element" v={chart.elemental_balance.dominant} />
+              <Row k="Dasha now" v={`${chart.dasha.current.lord} · until ${chart.dasha.current.end}`} />
+              {!!chart.ascendant_note && <Text style={[type.micro, { marginTop: space.sm }]}>{chart.ascendant_note}</Text>}
+            </Card>
+          )}
         </>
       )}
 
@@ -99,6 +116,8 @@ function Row({ k, v }: { k: string; v: string }) {
 }
 
 const styles = StyleSheet.create({
+  h: { color: colors.text, fontFamily: fonts.bold, fontSize: 14, marginBottom: space.sm },
+  chart: { width: '100%', aspectRatio: 1, backgroundColor: colors.ink, borderRadius: 8, overflow: 'hidden', marginBottom: space.sm },
   big: { color: colors.text, fontFamily: fonts.bold, fontSize: 20 },
   row: { flexDirection: 'row', justifyContent: 'space-between', gap: space.md, marginTop: 6 },
   k: { color: colors.dim, fontFamily: fonts.body, fontSize: 13 },

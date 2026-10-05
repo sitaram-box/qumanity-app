@@ -1,13 +1,14 @@
 /**
  * Private wallet (docs/qoins_wallet_system.md, transaction_history.md): balance,
- * the balance as the fewest Qoins (1 … 500), simulated donation (as on the
- * website — no payment provider is connected yet), and weekly history for the
- * last 3 months (Monday–Sunday weeks).
+ * the balance as the fewest Qoins (1 … 500), a real donation (website payment flow:
+ * order -> Razorpay Checkout -> verify; Qoins only after the payment is verified),
+ * and weekly history for the last 3 months (Monday–Sunday weeks).
  */
 
 import { useEffect, useState } from 'react';
 import { StyleSheet, Text, TextInput, View } from 'react-native';
 import * as Q from '@/api/qumanity';
+import { usePayment } from '@/components/Payment';
 import { BackHeader, Button, ErrorText, Label, Screen } from '@/components/ui';
 import { colors, fonts, radius, space } from '@/theme';
 
@@ -20,6 +21,7 @@ export default function Wallet() {
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<string>();
   const [error, setError] = useState<string>();
+  const { pay, sheet } = usePayment();
 
   async function load() {
     try {
@@ -42,7 +44,7 @@ export default function Wallet() {
     setError(undefined);
     setMsg(undefined);
     try {
-      const r = await Q.simulatedTopUp(Number(amount));
+      const r = await pay(Number(amount), 'donation');
       setMsg(`Donated ${config?.symbol ?? ''}${r.amount_rupees} — Qoins credited.`);
       setAmount('');
       await load();
@@ -79,8 +81,8 @@ export default function Wallet() {
       </View>
 
       <View style={styles.card}>
-        <Label>Donate (testing)</Label>
-        <Text style={styles.meta}>No payment service is connected yet, so this credits Qoins without real money — exactly like the website.</Text>
+        <Label>Donate</Label>
+        <Text style={styles.meta}>₹1–{config?.max_donation ?? 200}, paid securely (UPI, card, net banking). Qoins are credited once the payment is confirmed.</Text>
         <View style={styles.row}>
           <TextInput
             value={amount}
@@ -122,6 +124,7 @@ export default function Wallet() {
       ))}
       {!!history?.older_weeks_hidden && <Text style={styles.meta}>{history.older_weeks_hidden} older weeks are visible to the council only.</Text>}
       <ErrorText>{error}</ErrorText>
+      {sheet}
     </Screen>
   );
 }

@@ -8,6 +8,7 @@ import { router } from 'expo-router';
 import { useEffect, useState } from 'react';
 import { ActivityIndicator, ScrollView, StyleSheet, Text, View } from 'react-native';
 import * as Q from '@/api/qumanity';
+import { IndiaScoreboard } from '@/components/IndiaScoreboard';
 import { SubcontinentMap } from '@/components/SubcontinentMap';
 import { Button, Logo, Screen, SectionTitle } from '@/components/ui';
 import { colors, fonts, radius, space, timelineColors, tint, type } from '@/theme';
@@ -66,9 +67,31 @@ export default function Welcome() {
         ))}
       </View>
 
+      <FounderPreview />
+      <IndiaScoreboard />
       <MemberReviews />
       <AboutStats />
     </Screen>
+  );
+}
+
+/** The Founder's Message preview (website homepage); the full letter opens on its own screen. */
+function FounderPreview() {
+  const [msg, setMsg] = useState<Q.FounderMessage | null>(null);
+  useEffect(() => {
+    Q.founderMessage().then(setMsg, () => undefined);
+  }, []);
+  if (!msg) return null;
+  return (
+    <>
+      <SectionTitle>{msg.title}</SectionTitle>
+      <View style={styles.card}>
+        <Text style={[type.body, { flex: 1 }]} numberOfLines={5}>
+          {msg.preview_text}
+        </Text>
+      </View>
+      <Button title="Read the full message" variant="ghost" icon="book-outline" onPress={() => router.push('/founders-message')} />
+    </>
   );
 }
 

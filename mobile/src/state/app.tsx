@@ -23,8 +23,6 @@ export interface Draft {
   present: Place[];
   donate: boolean;
   donationAmount: number;
-  referralCode: string;
-  referrerPin: string;
   /** Registering someone else: the helper (this phone's member) becomes their referrer. */
   helping: boolean;
   helperId: string;
@@ -44,8 +42,6 @@ export const emptyDraft: Draft = {
   present: [],
   donate: false,
   donationAmount: 0,
-  referralCode: '',
-  referrerPin: '',
   helping: false,
   helperId: '',
   helperPin: '',

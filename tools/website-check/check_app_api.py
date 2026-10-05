@@ -105,7 +105,12 @@ for path in ["/api/wallet/balance", "/api/wallet/history", "/api/qoins/config", 
              "/api/board/removed", f"/api/location/stats/village/{village['id']}", "/api/earth/stats", "/api/zodiac/current"]:
     s, _ = call("GET", path, A_tok); check(f"GET {path}", s == 200, s)
 s, q = call("GET", "/api/qoins/preview?amount=289", A_tok); check("289 = 7 Qoins", q.get("qoins") == [200, 50, 20, 10, 5, 2, 2], q.get("qoins"))
-s, dn = call("POST", "/api/wallet/donate", A_tok, {"amount_rupees": 20}); check("simulated donation credits", s == 200 and dn.get("status") == "credited", dn)
+# real donations: order -> (Razorpay Checkout) -> verify; without Razorpay keys the website runs "simulated" mode
+s, bal0 = call("GET", "/api/wallet/balance", A_tok)
+s, od = call("POST", "/api/payment/order", A_tok, {"amount_rupees": 20}); check("payment order created (simulated without keys)", s == 200 and od.get("mode") in ("simulated", "razorpay") and od.get("local_order_id"), od)
+s, bal1 = call("GET", "/api/wallet/balance", A_tok); check("…nothing credited before verify", bal1["balance_qoins"] == bal0["balance_qoins"], (bal0, bal1))
+s, dn = call("POST", "/api/payment/verify", A_tok, {"local_order_id": od.get("local_order_id")}); check("verify credits Qoins", s == 200 and dn.get("status") == "credited" and dn.get("amount_rupees") == 20, dn)
+s, dn2 = call("POST", "/api/payment/verify", A_tok, {"local_order_id": od.get("local_order_id")}); check("an order can't be credited twice", s == 400, dn2)
 s, _ = call("POST", "/api/election-history", A_tok, {"loksabha": {"2024": "OTH"}, "vidhansabha": {"last": None, "next": None}})
 s2, eh = call("GET", "/api/election-history", A_tok); check("save election history", s == 200 and eh["party"]["loksabha"]["2024"] == "OTH")
 s, lg = call("POST", "/api/user/languages", A_tok, {"daily": "Tamil"}); check("set daily language", s == 200 and any(l["name"] == "Tamil" for l in lg["languages"]))
@@ -125,7 +130,7 @@ check("helper (app, signed out) registers a new member", s == 201 and h.get("ass
 row = __import__("sqlite3").connect(str(TMP / "copy.db")).execute("SELECT referred_by_user_id FROM users WHERE name='Chandra Helped'").fetchone()
 check("new member's referrer is the helper", row and row[0] == found["user_id"], row)
 s, bal_after = call("GET", "/api/wallet/balance", B_tok)
-check("cash donation credits the helper's wallet", bal_after["balance_qoins"] > bal_before["balance_qoins"], (bal_before["balance_qoins"], bal_after["balance_qoins"]))
+check("assisted registration stays free: an unpaid amount credits nobody", bal_after["balance_qoins"] == bal_before["balance_qoins"], (bal_before["balance_qoins"], bal_after["balance_qoins"]))
 check("the new member can sign in with their own ID + PIN", bool(login(h["private_code"], "36925")))
 web2 = A.app.test_client()
 web2.post("/login", json={"private_id": b["private_code"], "pin": "48291"})
@@ -149,9 +154,10 @@ s, pm = call("GET", "/api/people/me", B_tok); old = next(r for r in pm["account_
 s, _ = call("POST", "/api/people/account-ids/switch", B_tok, {"row_id": old["id"]})
 s2, meb = call("GET", "/api/me", B_tok); check("switch back to the old Account ID", s == 200 and meb["present_location_struct"]["village"]["id"] == village["id"])
 
-# --- election history naming and parties ---
-s, sen = call("GET", "/api/election-sentiment/country/O_AS_IND"); check("country page shows 'National Election'", s == 200 and sen["label"] == "National Election", sen)
-s, sen = call("GET", "/api/election-sentiment/state/CS.DL"); check("state page shows 'State Election'", s == 200 and sen["label"] == "State Election", sen)
+# --- election history naming and parties (percentages stay hidden until 2028 / the Founder opens them) ---
+for lvl, lid, label in (("country", "O_AS_IND", "National Election"), ("state", "CS.DL", "State Election")):
+    s, sen = call("GET", f"/api/election-sentiment/{lvl}/{lid}")
+    check(f"{lvl} page: '{label}' or the hidden-results reason", s == 200 and ((sen.get("visible") is False and sen.get("reason")) or sen.get("label") == label), sen)
 s, eh = call("GET", "/api/election-history", A_tok if call("GET", "/api/me", A_tok)[0] == 200 else pinr["token"])
 check("India's 3 parties + Not Voted", [c for c, _ in eh["parties"]] == ["BJP", "INC", "OTH", "NOTVOTED"], eh.get("parties"))
 
@@ -181,6 +187,20 @@ for path in ["/api/timebox", "/api/lunar/phase", "/api/karma/me", "/api/referrer
 s, pc = call("POST", "/api/dashboard/edit-request", tk, {"phone": "+919000000001", "reason": "new number"}); check("app profile-change request", s in (200, 201), (s, pc))
 s, ra = call("POST", "/api/referrer/apply", tk, {"note": "I help my neighbours register"}); check("app referrer application", s == 201, (s, ra))
 s, rm = call("GET", "/api/referrer/me", tk); check("…shows as pending", rm.get("pending") is True, rm)
+
+# --- website changes of 2026-10 the app now follows ---
+s, reg = call("POST", "/api/auth/register", body={"name": "Devi Payer", "gender": "female", "dob": "1992-02-02", "tob": "07:15", "pin": "24680",
+    "language": "Hindi", "birth_location": present, "present_location": present, "client": "app", "donation_amount": 30, "referral_code": "REF-OLD"})
+check("self-registration with a donation: account made, ₹30 left to pay online", s == 201 and reg.get("token") and reg.get("donation_pending_amount") == 30, (s, reg.get("error"), reg.get("donation_pending_amount")))
+s, od = call("POST", "/api/payment/order", reg.get("token"), {"amount_rupees": 30, "purpose": "registration"})
+s, dn = call("POST", "/api/payment/verify", reg.get("token"), {"local_order_id": od.get("local_order_id")}); check("…then the registration payment credits", s == 200 and dn.get("status") == "credited", dn)
+s, k = call("GET", "/api/me/kundali", reg.get("token")); check("my Moon-based Kundali (chart + table + dasha)", s == 200 and k.get("chart_svg", "").startswith("<svg") and k.get("table") and k.get("dasha", {}).get("current"), s)
+s, me2 = call("GET", "/api/me", reg.get("token")); check("/api/me has birth_location_struct + preferred_language", "birth_location_struct" in me2 and "preferred_language" in me2)
+s, lg = call("POST", "/api/user/languages", reg.get("token"), {"preferred": "hi"}); check("set preferred language", s == 200 and lg.get("preferred") == "hi", lg)
+s, sb = call("GET", "/api/scoreboard/india"); check("India scoreboard", s == 200 and isinstance(sb.get("total_members"), int) and sb.get("zones"), s)
+s, fm = call("GET", "/api/founder-message?lang=hi"); check("Founder's Message", s == 200 and fm.get("full_text"), s)
+s, ck = call("GET", f"/api/karma/collective/village/{village['id']}"); check("collective Karma for a place", s == 200 and "points" in ck, ck)
+s, pc = call("GET", "/api/perception/country/O_AS_IND", reg.get("token")); check("perception: counts hidden or shown, reason given", s == 200 and (pc.get("results_visible") or pc.get("results_reason")), pc)
 
 # --- monthly sign election, pilot village (Rohini Sector 24): needs the 500 demo residents ---
 import datetime as dt, random  # noqa: E401
