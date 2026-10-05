@@ -40,3 +40,6 @@ android/local.properties
 *.sqlite3
 backups/
 *.bak
+
+# Parked Firebase web config (2026-10-06) -- keep out of git
+Firebase configuration object.rtf
