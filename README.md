@@ -1,5 +1,12 @@
 # Qumanity — Phone App
 
+Copyright (C) 2026 Rohit Mudgal (individual).
+Qumanity Lok LLP is in registration. The IP will be
+assigned to the LLP once it is registered.
+
+Qumanity is licensed under the GNU Affero General Public
+License v3.0. See LICENSE for details.
+
 Qumanity = **Quantum + Humanity**. This is a WhatsApp-style governance app for Android and iOS. It has location groups from Village to Earth, four timelines, the Quantum Punch Council, and tiered posts that people vote up.
 
 - **Plan:** [docs/DEVELOPMENT_PLAN.md](docs/DEVELOPMENT_PLAN.md). Start here.
@@ -31,3 +38,7 @@ The app is a client of the **Qumanity website** (`Desktop/Qumanity_DPG`), so the
   - `python3 tools/website-check/check_app_api.py` (58 website API checks, on a temporary database copy)
   - `npm test` in `mobile/`
   - `npx tsc --noEmit` in `mobile/`
+
+## License
+
+Qumanity is licensed under the GNU Affero General Public License v3.0. See LICENSE for details.
