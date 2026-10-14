@@ -2,8 +2,8 @@
  * Account IDs: one per present-location stay, kept forever. You are in one place at a time, so
  * exactly one is active; switching changes your Public and Global pages to that place at once.
  * Moving somewhere new: request a new Account ID for that place, and the council approves it after
- * checking you are there. (Automatic approval when a local shop confirms a payment from you needs
- * the shop/payments module, which is not built yet.)
+ * checking you are there. (Automatic approval when a local shop confirms you are there is not
+ * built yet.)
  */
 
 import { Ionicons } from '@expo/vector-icons';

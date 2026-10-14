@@ -1,15 +1,12 @@
 /**
  * Private wallet (docs/qoins_wallet_system.md, transaction_history.md): balance,
- * the balance as the fewest Qoins (1 … 500), a real donation (website payment flow:
- * order -> Razorpay Checkout -> verify; Qoins only after the payment is verified),
- * and weekly history for the last 3 months (Monday–Sunday weeks).
+ * the balance as the fewest Qoins (1 … 500), and weekly history for the last 3 months (Monday–Sunday weeks).
  */
 
 import { useEffect, useState } from 'react';
-import { StyleSheet, Text, TextInput, View } from 'react-native';
+import { StyleSheet, Text, View } from 'react-native';
 import * as Q from '@/api/qumanity';
-import { usePayment } from '@/components/Payment';
-import { BackHeader, Button, ErrorText, Label, Screen } from '@/components/ui';
+import { BackHeader, ErrorText, Label, Screen } from '@/components/ui';
 import { colors, fonts, radius, space } from '@/theme';
 
 export default function Wallet() {
@@ -17,11 +14,7 @@ export default function Wallet() {
   const [history, setHistory] = useState<Awaited<ReturnType<typeof Q.walletHistory>> | null>(null);
   const [locked, setLocked] = useState(false);
   const [breakdown, setBreakdown] = useState<number[]>([]);
-  const [amount, setAmount] = useState('');
-  const [busy, setBusy] = useState(false);
-  const [msg, setMsg] = useState<string>();
   const [error, setError] = useState<string>();
-  const { pay, sheet } = usePayment();
 
   async function load() {
     try {
@@ -39,24 +32,7 @@ export default function Wallet() {
     load();
   }, []);
 
-  async function donate() {
-    setBusy(true);
-    setError(undefined);
-    setMsg(undefined);
-    try {
-      const r = await pay(Number(amount), 'donation');
-      setMsg(`Donated ${config?.symbol ?? ''}${r.amount_rupees} — Qoins credited.`);
-      setAmount('');
-      await load();
-    } catch (e) {
-      setError((e as Error).message);
-    } finally {
-      setBusy(false);
-    }
-  }
-
   const sym = config?.symbol ?? '';
-  const amt = Number(amount);
 
   return (
     <Screen>
@@ -78,24 +54,6 @@ export default function Wallet() {
           </View>
         )}
         {locked && <Text style={styles.locked}>Part of your registration Qoins is locked until your first council vote.</Text>}
-      </View>
-
-      <View style={styles.card}>
-        <Label>Donate</Label>
-        <Text style={styles.meta}>₹1–{config?.max_donation ?? 200}, paid securely (UPI, card, net banking). Qoins are credited once the payment is confirmed.</Text>
-        <View style={styles.row}>
-          <TextInput
-            value={amount}
-            onChangeText={(t) => setAmount(t.replace(/\D/g, '').slice(0, 3))}
-            keyboardType="number-pad"
-            placeholder="Amount"
-            placeholderTextColor={colors.faint}
-            style={styles.input}
-            accessibilityLabel="Donation amount"
-          />
-          <Button title="Donate" variant="ghost" onPress={donate} busy={busy} disabled={!amt || amt > (config?.max_donation ?? 200)} />
-        </View>
-        {msg && <Text style={styles.ok}>{msg}</Text>}
       </View>
 
       <Text style={styles.section}>Weekly history · last 3 months</Text>
@@ -124,7 +82,6 @@ export default function Wallet() {
       ))}
       {!!history?.older_weeks_hidden && <Text style={styles.meta}>{history.older_weeks_hidden} older weeks are visible to the council only.</Text>}
       <ErrorText>{error}</ErrorText>
-      {sheet}
     </Screen>
   );
 }
@@ -137,9 +94,6 @@ const styles = StyleSheet.create({
   qoin: { minWidth: 40, height: 40, borderRadius: 20, backgroundColor: colors.saffron, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 8 },
   qoinText: { color: colors.onAccent, fontFamily: fonts.bold, fontSize: 13 },
   locked: { color: colors.saffron, fontFamily: fonts.body, fontSize: 13, marginTop: space.md },
-  row: { flexDirection: 'row', gap: space.sm, alignItems: 'center', marginTop: space.md },
-  input: { flex: 1, height: 48, borderRadius: radius.md, borderWidth: 1, borderColor: colors.line, backgroundColor: colors.ink, paddingHorizontal: space.lg, color: colors.text, fontFamily: fonts.body },
-  ok: { color: colors.earth, fontFamily: fonts.medium, marginTop: space.sm },
   section: { color: colors.text, fontFamily: fonts.bold, fontSize: 16, marginTop: space.lg, marginBottom: space.sm },
   weekHead: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: space.sm },
   week: { color: colors.text, fontFamily: fonts.bold },

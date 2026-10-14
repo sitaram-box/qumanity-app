@@ -64,8 +64,6 @@ export interface RegisterBody {
   phone?: string;
   birth_location: LocationStruct;
   present_location: LocationStruct;
-  /** Self-registration: the amount is paid online right after the account exists (payment order, purpose "registration"). */
-  donation_amount?: number;
   /** Registering someone else: the helper's own Private ID + PIN make them the referrer. */
   assisted?: boolean;
   helper_private_id?: string;
@@ -78,8 +76,6 @@ export interface RegisterResult {
   assisted?: boolean;
   donation: unknown;
   donation_error: string | null;
-  /** Rupees still to pay online (self-registration with a donation); nothing is credited until the payment is verified. */
-  donation_pending_amount?: number;
   zodiac: { sun_sign: string; sun_element: string; moon_sign: string; ascendant_sign: string };
 }
 export const register = (b: RegisterBody) =>
@@ -100,10 +96,6 @@ export const recoverId = (body: Record<string, string>) =>
 // ---------- registration helpers ----------
 export const zodiacPreview = (dob: string) =>
   api<{ sign: string; element: string; age_name: string; age_range: string }>(`/api/zodiac/preview?dob=${encodeURIComponent(dob)}`);
-export const donationPreview = (amount: number, referrer: boolean) =>
-  api<{ amount: number; rows: [string, number][]; qoins: Record<string, number[]>; unit: string }>(
-    `/api/registration/donation-preview?amount=${amount}&referrer=${referrer ? 1 : 0}`,
-  );
 
 // ---------- collective board ----------
 export interface BoardPost {
@@ -383,14 +375,6 @@ export const topUpPreview = (amount: number) =>
   api<{ amount: number; qoins: number[]; topup: { own: number; village: number; own_qoins: number[]; village_qoins: number[] } | null }>(
     `/api/qoins/preview?amount=${amount}`,
   );
-// ---------- real donations (payment_core.py): order -> Razorpay Checkout -> verify; Qoins credit only after verify ----------
-export type PaymentOrder =
-  | { mode: 'simulated'; local_order_id: number; amount_rupees: number }
-  | { mode: 'razorpay'; local_order_id: number; razorpay_order_id: string; amount_rupees: number; amount_paise: number; currency: string; key_id: string };
-export const paymentOrder = (amount_rupees: number, purpose: 'donation' | 'registration' = 'donation') =>
-  api<PaymentOrder>('/api/payment/order', { body: { amount_rupees, purpose } });
-export const paymentVerify = (body: { local_order_id: number; razorpay_payment_id?: string; razorpay_order_id?: string; razorpay_signature?: string }) =>
-  api<{ status: string; amount_rupees: number; distribution: unknown }>('/api/payment/verify', { body });
 
 // ---------- election history ----------
 // Party options and Lok Sabha years are per-country and can move (election_core.py: parties_for_country,

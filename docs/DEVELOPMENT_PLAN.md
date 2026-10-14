@@ -482,7 +482,7 @@ The website's Private ID (`N1R-DU-GFA3-ZAI-BD.1`) is the *readable* format the a
 ## 19. Qoins wallets, donations, referrals and post pricing
 
 *Added 2026-09-27.* Specified in separate files so the app and the website share them (identical copies in `Qumanity_DPG/docs/`):
-[qoins_wallet_system.md](qoins_wallet_system.md) · [donation_distribution.md](donation_distribution.md) · [referral_system.md](referral_system.md) · [post_rewards.md](post_rewards.md) · [post_types_pricing.md](post_types_pricing.md) · [voting_logic.md](voting_logic.md) · [transaction_history.md](transaction_history.md) · [election_history.md](election_history.md) · [sub_groups.md](sub_groups.md) · [user_restrictions.md](user_restrictions.md) · [qpunch_council.md](qpunch_council.md).
+[qoins_wallet_system.md](qoins_wallet_system.md) · [qoins_earn_reference.md](qoins_earn_reference.md) · [referral_system.md](referral_system.md) · [post_rewards.md](post_rewards.md) · [post_types_pricing.md](post_types_pricing.md) · [voting_logic.md](voting_logic.md) · [transaction_history.md](transaction_history.md) · [election_history.md](election_history.md) · [sub_groups.md](sub_groups.md) · [user_restrictions.md](user_restrictions.md) · [qpunch_council.md](qpunch_council.md).
 
 **Spark-plan consequences for the app**
 - Text posts, votes, rewards and wallet arithmetic run in the client transaction checked by the rules, like votes (§17.2).

@@ -7,6 +7,7 @@ import { ActivityIndicator, Keyboard, Platform, View } from 'react-native';
 import { SafeAreaInsetsContext, SafeAreaProvider, useSafeAreaInsets } from 'react-native-safe-area-context';
 import PoemsMarquee from '@/components/PoemsMarquee';
 import { Logo } from '@/components/ui';
+import { QM_MARQUEE_ENABLED } from '@/config';
 import { AppProvider, useApp } from '@/state/app';
 import { colors } from '@/theme';
 
@@ -60,7 +61,8 @@ function BottomMarqueeLayout({ showMarquee, children }: { showMarquee: boolean; 
           backgroundColor: colors.panel,
         }}
       >
-        {showMarquee && <PoemsMarquee />}
+        {/* Off unless QM_MARQUEE_ENABLED (src/config.ts); the strip collapses to the safe-area inset. */}
+        {showMarquee && QM_MARQUEE_ENABLED && <PoemsMarquee />}
       </View>
     </View>
   );

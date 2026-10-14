@@ -1,6 +1,7 @@
 {
   "name": "qumanity-mobile",
   "version": "1.0.0",
+  "license": "AGPL-3.0-only",
   "main": "expo-router/entry",
   "dependencies": {
     "@expo-google-fonts/fraunces": "^0.4.1",
@@ -21,8 +22,7 @@
     "react-native-safe-area-context": "~5.7.0",
     "react-native-screens": "~4.26.0",
     "react-native-svg": "15.15.4",
-    "react-native-web": "^0.21.2",
-    "react-native-webview": "13.16.1"
+    "react-native-web": "^0.21.2"
   },
   "devDependencies": {
     "@types/react": "~19.2.2",

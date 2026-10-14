@@ -105,12 +105,10 @@ for path in ["/api/wallet/balance", "/api/wallet/history", "/api/qoins/config", 
              "/api/board/removed", f"/api/location/stats/village/{village['id']}", "/api/earth/stats", "/api/zodiac/current"]:
     s, _ = call("GET", path, A_tok); check(f"GET {path}", s == 200, s)
 s, q = call("GET", "/api/qoins/preview?amount=289", A_tok); check("289 = 7 Qoins", q.get("qoins") == [200, 50, 20, 10, 5, 2, 2], q.get("qoins"))
-# real donations: order -> (Razorpay Checkout) -> verify; without Razorpay keys the website runs "simulated" mode
-s, bal0 = call("GET", "/api/wallet/balance", A_tok)
-s, od = call("POST", "/api/payment/order", A_tok, {"amount_rupees": 20}); check("payment order created (simulated without keys)", s == 200 and od.get("mode") in ("simulated", "razorpay") and od.get("local_order_id"), od)
-s, bal1 = call("GET", "/api/wallet/balance", A_tok); check("…nothing credited before verify", bal1["balance_qoins"] == bal0["balance_qoins"], (bal0, bal1))
-s, dn = call("POST", "/api/payment/verify", A_tok, {"local_order_id": od.get("local_order_id")}); check("verify credits Qoins", s == 200 and dn.get("status") == "credited" and dn.get("amount_rupees") == 20, dn)
-s, dn2 = call("POST", "/api/payment/verify", A_tok, {"local_order_id": od.get("local_order_id")}); check("an order can't be credited twice", s == 400, dn2)
+# no payments: the Razorpay order/verify routes and the registration fee preview are gone (2026-10)
+for path in ["/api/payment/order", "/api/payment/verify"]:
+    s, _ = call("POST", path, A_tok, {"amount_rupees": 20}); check(f"POST {path} is gone", s == 404, s)
+s, _ = call("GET", "/api/registration/donation-preview?amount=10", A_tok); check("registration fee preview is gone", s == 404, s)
 s, _ = call("POST", "/api/election-history", A_tok, {"loksabha": {"2024": "OTH"}, "vidhansabha": {"last": None, "next": None}})
 s2, eh = call("GET", "/api/election-history", A_tok); check("save election history", s == 200 and eh["party"]["loksabha"]["2024"] == "OTH")
 s, lg = call("POST", "/api/user/languages", A_tok, {"daily": "Tamil"}); check("set daily language", s == 200 and any(l["name"] == "Tamil" for l in lg["languages"]))
@@ -125,12 +123,12 @@ check("helper with a wrong PIN is refused before any account is made", s == 403,
 con_count = lambda: __import__("sqlite3").connect(str(TMP / "copy.db")).execute("SELECT COUNT(*) FROM users WHERE name='Chandra Helped'").fetchone()[0]
 check("…and no account was created", con_count() == 0)
 s, bal_before = call("GET", "/api/wallet/balance", B_tok)
-s, h = call("POST", "/api/auth/register", body=dict(new_person, helper_private_id=b["private_code"], helper_pin="48291", donation_amount=20))
+s, h = call("POST", "/api/auth/register", body=dict(new_person, helper_private_id=b["private_code"], helper_pin="48291"))
 check("helper (app, signed out) registers a new member", s == 201 and h.get("assisted") is True and len(h.get("private_code", "")) == 9 and not h.get("token"), (s, h.get("error")))
 row = __import__("sqlite3").connect(str(TMP / "copy.db")).execute("SELECT referred_by_user_id FROM users WHERE name='Chandra Helped'").fetchone()
 check("new member's referrer is the helper", row and row[0] == found["user_id"], row)
 s, bal_after = call("GET", "/api/wallet/balance", B_tok)
-check("assisted registration stays free: an unpaid amount credits nobody", bal_after["balance_qoins"] == bal_before["balance_qoins"], (bal_before["balance_qoins"], bal_after["balance_qoins"]))
+check("assisted registration is free: the helper gets no whole Qoin", bal_after["balance_qoins"] == bal_before["balance_qoins"], (bal_before["balance_qoins"], bal_after["balance_qoins"]))
 check("the new member can sign in with their own ID + PIN", bool(login(h["private_code"], "36925")))
 web2 = A.app.test_client()
 web2.post("/login", json={"private_id": b["private_code"], "pin": "48291"})
@@ -189,11 +187,9 @@ s, ra = call("POST", "/api/referrer/apply", tk, {"note": "I help my neighbours r
 s, rm = call("GET", "/api/referrer/me", tk); check("…shows as pending", rm.get("pending") is True, rm)
 
 # --- website changes of 2026-10 the app now follows ---
-s, reg = call("POST", "/api/auth/register", body={"name": "Devi Payer", "gender": "female", "dob": "1992-02-02", "tob": "07:15", "pin": "24680",
+s, reg = call("POST", "/api/auth/register", body={"name": "Devi Member", "gender": "female", "dob": "1992-02-02", "tob": "07:15", "pin": "24680",
     "language": "Hindi", "birth_location": present, "present_location": present, "client": "app", "donation_amount": 30, "referral_code": "REF-OLD"})
-check("self-registration with a donation: account made, ₹30 left to pay online", s == 201 and reg.get("token") and reg.get("donation_pending_amount") == 30, (s, reg.get("error"), reg.get("donation_pending_amount")))
-s, od = call("POST", "/api/payment/order", reg.get("token"), {"amount_rupees": 30, "purpose": "registration"})
-s, dn = call("POST", "/api/payment/verify", reg.get("token"), {"local_order_id": od.get("local_order_id")}); check("…then the registration payment credits", s == 200 and dn.get("status") == "credited", dn)
+check("self-registration is free: account made, nothing to pay, free Qoin minted", s == 201 and reg.get("token") and "donation_pending_amount" not in reg and (reg.get("donation") or {}).get("kind") == "free", (s, reg.get("error"), reg.get("donation")))
 s, k = call("GET", "/api/me/kundali", reg.get("token")); check("my Moon-based Kundali (chart + table + dasha)", s == 200 and k.get("chart_svg", "").startswith("<svg") and k.get("table") and k.get("dasha", {}).get("current"), s)
 s, me2 = call("GET", "/api/me", reg.get("token")); check("/api/me has birth_location_struct + preferred_language", "birth_location_struct" in me2 and "preferred_language" in me2)
 s, lg = call("POST", "/api/user/languages", reg.get("token"), {"preferred": "hi"}); check("set preferred language", s == 200 and lg.get("preferred") == "hi", lg)

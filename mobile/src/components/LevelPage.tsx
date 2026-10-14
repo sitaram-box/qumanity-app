@@ -44,7 +44,7 @@ export function LevelPage({ accent, levels }: { title?: string; note?: string; a
   const [wallet, setWallet] = useState<number | null>(null);
   const [members, setMembers] = useState<number | null>(null);
   const [karma, setKarma] = useState<number | null>(null);
-  // Only the paid-posting Composer needs a currency value (post prices are a real payment ask);
+  // Only the paid-posting Composer needs a currency value (post prices are paid in Qoins, shown with their rupee reference);
   // the group wallet itself never shows currency, only members + Qoins (docs/qoins_wallet_system.md).
   const [currency, setCurrency] = useState('₹');
   const [council, setCouncil] = useState(false);

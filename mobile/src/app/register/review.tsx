@@ -1,26 +1,22 @@
 /**
- * Step 4 · Review, optional donation, create the account, then show the
+ * Step 4 · Review, create the account, then show the
  * 9-digit Private ID once ("I have saved my Private ID → Dashboard").
  * A member can also register someone else here (e.g. a person without a smartphone): with
  * "I'm registering someone else" on, their own Private ID + PIN make them the referrer, and
  * nobody is signed in afterwards — the new member's Private ID is shown to hand over.
  * There are no referral codes any more (website 2026-10): the only referrer is the member doing the
- * registering. A donation is real money: self-registration pays online right after the account
- * exists (payment order, purpose "registration"); an assisted registration is always free.
+ * registering. Registration is always free: there is no fee or payment step.
  */
 
 import * as Clipboard from "expo-clipboard";
 import { router } from "expo-router";
 import { useEffect, useState } from "react";
-import { StyleSheet, Switch, Text, TextInput, View } from "react-native";
-import { setToken } from "@/api/client";
+import { StyleSheet, Switch, Text, View } from "react-native";
 import { toStruct } from "@/api/locations";
-import { donationPreview, register, type RegisterResult } from "@/api/qumanity";
+import { register, type RegisterResult } from "@/api/qumanity";
 import { CodeInput } from "@/components/CodeInput";
-import { usePayment } from "@/components/Payment";
 import {
   Button,
-  Chip,
   ErrorText,
   Field,
   Label,
@@ -33,42 +29,21 @@ import { rememberedId } from "@/lib/remembered";
 import { useApp } from "@/state/app";
 import { colors, fonts, radius, space } from "@/theme";
 
-const AMOUNTS = [1, 2, 5, 10, 20, 50, 100, 200];
 const GENDER = {
   male: "Male",
   female: "Female",
   both: "Third gender",
   "": "—",
 } as const;
-const RECIPIENT: Record<string, string> = {
-  earth: "Earth",
-  continent: "Continent",
-  country: "Country",
-  zone: "Zone",
-  state: "State",
-  district: "District",
-  tehsil: "Tehsil",
-  village: "Village",
-  referrer: "Referrer",
-  new_user: "New member (locked until their first council vote)",
-};
-
 export default function Review() {
   const { draft, setDraft, acceptToken, resetDraft } = useApp();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string>();
   const [result, setResult] = useState<RegisterResult | null>(null);
-  const [preview, setPreview] = useState<[string, number][] | null>(null);
   const [copied, setCopied] = useState(false);
-  const { pay, sheet } = usePayment();
-  const [paid, setPaid] = useState<string | null>(null);
-  const [paying, setPaying] = useState(false);
 
-  // Assisted registrations are always free (the new member has no session to pay from).
-  const amount = draft.donate && !draft.helping ? draft.donationAmount : 0;
   const helperDigits = draft.helperId.replace(/\D/g, "");
   const helping = draft.helping;
-  const hasReferrer = helping;
   const helperReady =
     !helping || (helperDigits.length === 9 && draft.helperPin.length === 5);
 
@@ -81,18 +56,6 @@ export default function Review() {
     );
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
-
-  useEffect(() => {
-    if (!amount) return setPreview(null);
-    let live = true;
-    donationPreview(amount, hasReferrer).then(
-      (p) => live && setPreview(p.rows),
-      () => live && setPreview(null),
-    );
-    return () => {
-      live = false;
-    };
-  }, [amount, hasReferrer]);
 
   async function create() {
     setBusy(true);
@@ -109,7 +72,6 @@ export default function Review() {
         phone: draft.phone || undefined,
         birth_location: toStruct(draft.birth),
         present_location: toStruct(draft.present),
-        donation_amount: amount || undefined,
         ...(helping
           ? {
               assisted: true,
@@ -182,23 +144,6 @@ export default function Review() {
 
   if (result) {
     const code = result.private_code;
-    const due = paid ? 0 : (result.donation_pending_amount ?? 0);
-    async function payDonation() {
-      if (!result?.token) return;
-      setPaying(true);
-      setError(undefined);
-      try {
-        await setToken(result.token); // the new member pays from their own account
-        const r = await pay(due, "registration");
-        setPaid(
-          `Thank you — ₹${r.amount_rupees} received and shared as Qoins.`,
-        );
-      } catch (e) {
-        setError((e as Error).message);
-      } finally {
-        setPaying(false);
-      }
-    }
     return (
       <Screen
         footer={
@@ -236,28 +181,7 @@ export default function Review() {
         {result.donation_error && (
           <Text style={styles.warn}>{result.donation_error}</Text>
         )}
-        {due > 0 && (
-          <View style={styles.card}>
-            <Text style={styles.v}>Your donation: ₹{due}</Text>
-            <Text style={styles.hint}>
-              Pay securely now (UPI, card, net banking). Qoins are shared only
-              after the payment is confirmed. You can also skip and donate later
-              from your Wallet.
-            </Text>
-            <Button
-              title={`Pay ₹${due}`}
-              icon="card"
-              onPress={payDonation}
-              busy={paying}
-              style={{ marginTop: space.sm }}
-            />
-          </View>
-        )}
-        {paid && (
-          <Text style={[styles.meta, { color: colors.earth }]}>{paid}</Text>
-        )}
         <ErrorText>{error}</ErrorText>
-        {sheet}
         {result.zodiac && (
           <Text style={styles.meta}>
             Sun {result.zodiac.sun_sign} ({result.zodiac.sun_element}) · Moon{" "}
@@ -351,71 +275,6 @@ export default function Review() {
         </View>
       )}
 
-      {!helping && (
-        <View style={styles.toggle}>
-          <View style={{ flex: 1 }}>
-            <Text style={styles.v}>Donate at registration (optional)</Text>
-            <Text style={styles.hint}>
-              Up to 200, paid online right after your account is created. It is
-              shared between the location groups and you.
-            </Text>
-          </View>
-          <Switch
-            value={draft.donate}
-            onValueChange={(v) =>
-              setDraft({
-                donate: v,
-                donationAmount: v ? draft.donationAmount || 10 : 0,
-              })
-            }
-            trackColor={{ true: colors.gold, false: colors.line }}
-            accessibilityLabel="Donate at registration"
-          />
-        </View>
-      )}
-
-      {draft.donate && !helping && (
-        <View style={styles.card}>
-          <Label>Amount</Label>
-          <View style={styles.wrap}>
-            {AMOUNTS.map((a) => (
-              <Chip
-                key={a}
-                label={String(a)}
-                selected={draft.donationAmount === a}
-                onPress={() => setDraft({ donationAmount: a })}
-              />
-            ))}
-          </View>
-          <TextInput
-            value={String(draft.donationAmount || "")}
-            onChangeText={(t) =>
-              setDraft({
-                donationAmount: Math.min(
-                  200,
-                  Number(t.replace(/\D/g, "") || 0),
-                ),
-              })
-            }
-            keyboardType="number-pad"
-            placeholder="Other amount (up to 200)"
-            placeholderTextColor={colors.faint}
-            style={styles.input}
-            accessibilityLabel="Donation amount"
-          />
-          {preview && (
-            <View style={{ marginTop: space.md }}>
-              <Label>Where it goes</Label>
-              {preview.map(([who, value]) => (
-                <View key={who} style={styles.split}>
-                  <Text style={styles.splitWho}>{RECIPIENT[who] ?? who}</Text>
-                  <Text style={styles.splitAmt}>{value}</Text>
-                </View>
-              ))}
-            </View>
-          )}
-        </View>
-      )}
       <ErrorText>{error}</ErrorText>
     </Screen>
   );
@@ -448,25 +307,6 @@ const styles = StyleSheet.create({
     gap: space.md,
     marginBottom: space.lg,
   },
-  wrap: { flexDirection: "row", flexWrap: "wrap", marginBottom: space.sm },
-  input: {
-    height: 48,
-    borderRadius: radius.md,
-    borderWidth: 1,
-    borderColor: colors.line,
-    backgroundColor: colors.ink,
-    paddingHorizontal: space.lg,
-    color: colors.text,
-    fontFamily: fonts.body,
-    marginBottom: space.lg,
-  },
-  split: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    paddingVertical: 4,
-  },
-  splitWho: { color: colors.dim, fontFamily: fonts.body },
-  splitAmt: { color: colors.gold, fontFamily: fonts.bold },
   idCard: {
     backgroundColor: colors.panel,
     borderRadius: radius.lg,
