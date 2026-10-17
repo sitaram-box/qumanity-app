@@ -2,6 +2,7 @@
   "name": "qumanity-mobile",
   "version": "1.0.0",
   "license": "AGPL-3.0-only",
+  "author": "Rohit Mudgal",
   "main": "expo-router/entry",
   "dependencies": {
     "@expo-google-fonts/fraunces": "^0.4.1",
