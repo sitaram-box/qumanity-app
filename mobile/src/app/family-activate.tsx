@@ -105,7 +105,8 @@ export default function FamilyActivate() {
   }
 
   // ---- Step 3 ----
-  async function findSpouse() {
+  /** Looks the Public ID up; returns the person (also stored), or null with the error shown. */
+  async function findSpouse(): Promise<Q.FoundPerson | null> {
     setSearching(true);
     setError(undefined);
     setSpouseFound(null);
@@ -113,15 +114,23 @@ export default function FamilyActivate() {
       const p = await Q.searchPerson(spouseCode.replace(/\D/g, ''));
       setSpouseFound(p);
       if (!spouseName.trim()) setSpouseName(p.name);
+      return p;
     } catch (e) {
       setError((e as Error).message);
+      return null;
     } finally {
       setSearching(false);
     }
   }
-  function nextFromSpouse() {
-    if (!spouseName.trim()) return setError("Spouse's name is required.");
-    if (spouseOnApp && !spouseFound) return setError("Find your spouse's Public ID above, or switch off \"already on Qumanity\".");
+  async function nextFromSpouse() {
+    let found = spouseFound;
+    if (spouseOnApp && !found) {
+      // A typed but not yet looked-up Public ID: look it up now instead of making them tap Find.
+      if (spouseCode.length !== 12) return setError('Enter their 12-digit Public ID, or switch off "already on Qumanity".');
+      found = await findSpouse();
+      if (!found) return; // not found: findSpouse() shows why
+    }
+    if (!spouseName.trim() && !found) return setError("Spouse's name is required.");
     go('children');
   }
 
@@ -294,6 +303,7 @@ export default function FamilyActivate() {
                       ? nextFromChildren
                       : () => go('review')
             }
+            busy={step === 'spouse' && searching}
             disabled={step === 'discover' && Object.values(suggestions).includes('loading')}
             style={{ flex: 2 }}
           />
@@ -447,16 +457,25 @@ export default function FamilyActivate() {
                   <Text style={styles.hint}>{sug === 'error' ? "Couldn't check — " : 'No existing match — '}a new profile will be created.</Text>
                 ) : (
                   <>
-                    {sug.map((m, i) =>
+                    {forSlot(s.key, sug).length === 0 && <Text style={styles.hint}>No family unit to join as their spouse — a new profile will be created.</Text>}
+                    {forSlot(s.key, sug).map((m, i) =>
                       m.type === 'group' ? (
                         <View key={i} style={styles.suggestion}>
+                          <Text style={styles.v}>{founders(m)}</Text>
                           <Text style={styles.hint}>
-                            {m.group_name} ({m.member_count} {m.member_count === 1 ? 'member' : 'members'}) — matched via {m.matched_name}
+                            {m.group_name} · {m.member_count} {m.member_count === 1 ? 'member' : 'members'} · {m.matched_name}
+                            {m.matched_role === 'child' ? ' is a child here' : m.matched_role ? ' founded this family' : ''}
                           </Text>
                           <Button
-                            title="Request to join"
+                            title={s.key === 'spouse' ? 'Join as their spouse' : 'Request to join'}
                             size="sm"
-                            onPress={() => choose(s.key, { action: 'join', group_id: m.group_id, matched_node_id: m.matched_node_id }, `Will ask to join ${m.group_name}.`)}
+                            onPress={() =>
+                              choose(
+                                s.key,
+                                { action: 'join', group_id: m.group_id, matched_node_id: m.matched_node_id },
+                                s.key === 'spouse' ? `Will ask ${m.matched_name} to confirm you as their spouse.` : `Will ask to join ${founders(m)}.`,
+                              )
+                            }
                           />
                         </View>
                       ) : (
@@ -507,9 +526,19 @@ export default function FamilyActivate() {
           <Title>Your Family Tree is active</Title>
           {result.activate.parents_group_name && <Row k="Your parents' family" v={result.activate.parents_group_name} />}
           {result.marry?.marital_group_name && <Row k="Your own family" v={result.marry.marital_group_name} />}
-          {[...result.activate.joined_requests, ...(result.marry?.joined_requests ?? [])].map((j, i) => (
-            <Row key={`j${i}`} k="Join request sent" v={`${j.name} — an admin of that family will approve it`} />
-          ))}
+          {[...result.activate.joined_requests, ...(result.marry?.joined_requests ?? [])].map((j, i) =>
+            j.label === 'spouse' ? (
+              <Row key={`j${i}`} k="Your spouse" v={`${j.name} will be asked to confirm. Once they approve, you are an admin of your family unit.`} />
+            ) : (
+              <Row key={`j${i}`} k="Join request sent" v={`${j.name} — an admin of that family will approve it`} />
+            ),
+          )}
+          {!!result.marry?.children_not_added && (
+            <Row
+              k="Your children"
+              v={`Not added here (${result.marry.children_not_added}). Once your spouse approves, either of you can add them in your family unit.`}
+            />
+          )}
           {[...result.activate.notified, ...(result.marry?.notified ?? [])].map((n, i) => (
             <Row key={`n${i}`} k="Notified" v={`${n.name} — invited to build their Family Tree`} />
           ))}
@@ -529,6 +558,18 @@ export default function FamilyActivate() {
       <ErrorText>{error}</ErrorText>
     </Screen>
   );
+}
+
+/** Who founded a suggested unit — units can share a name (e.g. someone's parents' unit and their own). */
+function founders(m: Extract<Q.FamilySuggestion, { type: 'group' }>): string {
+  return [m.husband_name, m.wife_name].filter(Boolean).join(' & ') || m.group_name;
+}
+
+/** The spouse may only join a unit where the matched person is a FOUNDER with an open partner
+ * place (never e.g. their parents' unit, where they are a child). Other people see every match. */
+function forSlot(key: string, sug: Q.FamilySuggestion[]): Q.FamilySuggestion[] {
+  if (key !== 'spouse') return sug;
+  return sug.filter((m) => m.type !== 'group' || ((m.matched_role === 'husband' || m.matched_role === 'wife') && m.partner_slot_open === true));
 }
 
 function PersonInput({ label, value, onChange }: { label: string; value: Person; onChange: (p: Person) => void }) {

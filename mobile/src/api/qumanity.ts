@@ -693,7 +693,22 @@ export interface FamilySlot {
   user_id?: number;
 }
 export type FamilySuggestion =
-  | { type: 'group'; group_id: number; group_name: string; group_kind?: string; matched_node_id: number; matched_name: string; member_count: number }
+  | {
+      type: 'group';
+      group_id: number;
+      group_name: string;
+      group_kind?: string;
+      matched_node_id: number;
+      matched_name: string;
+      member_count: number;
+      /** The unit's founders (website 2026-10-26) — units can share a name, so show who they are. */
+      husband_name?: string | null;
+      wife_name?: string | null;
+      /** How the matched person sits in this unit; a spouse may join only where they are a founder
+       * with an unclaimed partner place. */
+      matched_role?: 'husband' | 'wife' | 'child';
+      partner_slot_open?: boolean;
+    }
   | { type: 'unactivated_user'; user_id: number; name: string; gender: Gender | null; profile_picture_url: string | null };
 /** The website also returns other discovery kinds (e.g. activated members nearby); the wizard,
  * like the website's, only uses these two. */
@@ -708,6 +723,9 @@ export interface FamilyResult {
   parents_group_name?: string;
   marital_group_id?: number;
   marital_group_name?: string;
+  /** Set when the spouse already founds a unit and this member asked to claim the partner place:
+   * the children listed in the wizard were not added (that unit's admins can add them). */
+  children_not_added?: number;
 }
 export const familyActivate = (body: {
   father: FamilySlot;
