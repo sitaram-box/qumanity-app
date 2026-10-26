@@ -239,6 +239,37 @@ s, nb_b = call("GET", f"/api/family/node/{fam}/neighborhood", B_tok); check("aft
 s, gm = call("GET", f"/api/people/groups/{fam_a['id']}/messages", pinr["token"])
 check("personal group chat members carry the Members-list fields", s == 200 and {"gender", "age_group", "present_location", "is_admin"} <= set((gm.get("members") or [{}])[0]), (s, (gm.get("members") or [{}])[0]))
 
+# --- in-app Family Tree activation wizard (app/family-activate.tsx), same payloads as website family.js ---
+def new_member(name, gender, dob):
+    st, r = call("POST", "/api/auth/register", body={"name": name, "gender": gender, "dob": dob, "tob": "08:00", "pin": "11223",
+        "language": "Hindi", "birth_location": present, "present_location": present, "client": "app"})
+    return r.get("token")
+wz = new_member("Wizard Married", "male", "1985-03-03")
+s, sg = call("GET", "/api/family/suggest?name=Check%20Father", wz)
+check("step 5: suggest finds an existing unit by name (group + matched_node_id)", s == 200 and any(r.get("type") == "group" and r.get("matched_node_id") for r in sg.get("results", [])), sg)
+s, a1 = call("POST", "/api/family/activate", wz, {"father": {"name": "Wiz Father", "action": "create"}, "mother": {"name": "Wiz Mother", "action": "create", "is_deceased": True},
+    "relationship": "married", "father_father": {"name": "Wiz Grandfather", "action": "create"}, "father_mother": None, "mother_father": None, "mother_mother": None})
+check("step 6: activate (married, deceased mother, one grandparent)", s == 201 and a1.get("parents_group_id"), (s, a1))
+s, m1 = call("POST", "/api/family/marry", wz, {"spouse": {"name": "Asha Test", "action": "notify", "user_id": found["user_id"]},
+    "children": [{"name": "Wiz Daughter", "action": "create", "gender": "female"}, {"name": "Wiz Child", "action": "create", "gender": "both"}],
+    "marriage_status": "active", "spouse_father": None, "spouse_mother": None})
+check("…then marry: spouse linked by Public ID (notify) + 2 children (Daughter, Third gender)", s == 201 and m1.get("marital_group_id") and m1.get("notified"), (s, m1))
+s, fs = call("GET", "/api/family/status", wz); check("wizard result: activated, own unit + parents' unit listed", fs.get("activated") and len(fs.get("groups", [])) >= 2, fs)
+s, again = call("POST", "/api/family/activate", wz, {"father": {"name": "X", "action": "create"}, "mother": {"name": "Y", "action": "create"}, "relationship": "single"})
+check("activation can only happen once (400 with a message)", s == 400 and again.get("error"), (s, again))
+ws = new_member("Wizard Single", "female", "2001-06-06")
+s, a2 = call("POST", "/api/family/activate", ws, {"father": {"name": "Single Father", "action": "create"}, "mother": {"name": "Single Mother", "action": "create"}, "relationship": "single"})
+check("single: activate only, no marry call", s == 201, (s, a2))
+wsep = new_member("Wizard Separated", "female", "1980-02-02")
+s, _ = call("POST", "/api/family/activate", wsep, {"father": {"name": "Sep Father", "action": "create"}, "mother": {"name": "Sep Mother", "action": "create"}, "relationship": "separated"})
+s, m3 = call("POST", "/api/family/marry", wsep, {"spouse": {"name": "Former Spouse", "action": "create"}, "children": [], "marriage_status": "separated"})
+check("separated: marry with marriage_status 'separated' (female member -> wife side)", s == 201 and m3.get("marital_group_id"), (s, m3))
+grp = next((r for r in sg.get("results", []) if r.get("type") == "group"), None)
+wj = new_member("Wizard Joiner", "male", "1990-09-09")
+s, a4 = call("POST", "/api/family/activate", wj, {"father": {"name": grp["matched_name"], "action": "join", "group_id": grp["group_id"], "matched_node_id": grp["matched_node_id"]},
+    "mother": {"name": "Joiner Mother", "action": "create"}, "relationship": "single"}) if grp else (0, {})
+check("step 5 'Request to join': the join request is sent during activation", s == 201 and a4.get("joined_requests"), (s, a4))
+
 # --- monthly sign election, pilot village (Rohini Sector 24): needs the 500 demo residents ---
 import datetime as dt, random  # noqa: E401
 import election_core as E  # noqa: E402

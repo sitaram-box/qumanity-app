@@ -677,3 +677,52 @@ export const familyInvite = (groupId: number, user_id: number) =>
   api<{ status: 'invited' }>(`/api/family-groups/${groupId}/invite`, { body: { user_id } });
 export const familyJoinRequest = (groupId: number) => api<{ status: 'requested' }>(`/api/family-groups/${groupId}/join-request`, { body: {} });
 export const familyLeave = (groupId: number) => api<{ status: 'left' }>(`/api/family-groups/${groupId}/leave`, { body: {} });
+
+// ---------- Family Tree activation (website family.js wizard; family_core.activate/marry_timeline) ----------
+export type Relationship = 'single' | 'married' | 'separated' | 'divorced' | 'widowed';
+/** One person in the wizard. "create" = new profile; "join" = request to join an existing unit
+ * (group_id + matched_node_id from familySuggest); "notify" = an existing member (user_id) is
+ * pinged to activate, and their own node is reused if they already have one. */
+export interface FamilySlot {
+  name: string;
+  action: 'create' | 'join' | 'notify';
+  is_deceased?: boolean;
+  gender?: Gender;
+  group_id?: number;
+  matched_node_id?: number;
+  user_id?: number;
+}
+export type FamilySuggestion =
+  | { type: 'group'; group_id: number; group_name: string; group_kind?: string; matched_node_id: number; matched_name: string; member_count: number }
+  | { type: 'unactivated_user'; user_id: number; name: string; gender: Gender | null; profile_picture_url: string | null };
+/** The website also returns other discovery kinds (e.g. activated members nearby); the wizard,
+ * like the website's, only uses these two. */
+export const isWizardSuggestion = (r: { type: string }): r is FamilySuggestion => r.type === 'group' || r.type === 'unactivated_user';
+export const familySuggest = (name: string) =>
+  api<{ results: { type: string }[] }>(`/api/family/suggest?name=${encodeURIComponent(name)}`);
+
+export interface FamilyResult {
+  joined_requests: { label: string; name: string; group_id: number }[];
+  notified: { label: string; name: string; user_id: number }[];
+  parents_group_id?: number;
+  parents_group_name?: string;
+  marital_group_id?: number;
+  marital_group_name?: string;
+}
+export const familyActivate = (body: {
+  father: FamilySlot;
+  mother: FamilySlot;
+  relationship: Relationship;
+  father_father?: FamilySlot | null;
+  father_mother?: FamilySlot | null;
+  mother_father?: FamilySlot | null;
+  mother_mother?: FamilySlot | null;
+}) => api<FamilyResult>('/api/family/activate', { body });
+/** Married/separated/divorced/widowed only, and only after activation. */
+export const familyMarry = (body: {
+  spouse: FamilySlot;
+  children: FamilySlot[];
+  marriage_status: 'active' | 'separated' | 'dissolved';
+  spouse_father?: FamilySlot | null;
+  spouse_mother?: FamilySlot | null;
+}) => api<FamilyResult>('/api/family/marry', { body });

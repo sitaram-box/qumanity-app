@@ -58,7 +58,8 @@ src/
     (tabs)/               the 4 timelines: global, public, personal, private
     welcome, login, register/*, forgot-pin, recover-id      signed-out screens
     chat/[kind]/[id]      one chat screen for village sub-groups, personal groups, private chats
-    family-tree           Family Tree: one family unit at a time (activation stays on the website)
+    family-tree           Family Tree: one family unit at a time
+    family-activate       Build your Family Tree: the 6-step Activation wizard (same payloads as the website)
     groups/*, private-groups, notifications, account-ids, wallet, settings, …
   api/
     client.ts             server address, token, api() JSON calls, upload() multipart, authHeaders()

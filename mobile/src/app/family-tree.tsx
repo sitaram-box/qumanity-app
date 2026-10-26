@@ -4,15 +4,15 @@
  * unit to move there (a trail lets you step back). A unit you aren't a member of can be asked to
  * join. Members + "Add by Public ID" (admins) per unit.
  *
- * Activation (the 6-step wizard: relationship, spouse, parents, children…) stays on the website
- * for now — until a member has activated, this screen points them there.
+ * Until a member has activated, this screen offers "Build your Family Tree", which opens the
+ * in-app 6-step Activation wizard (app/family-activate.tsx, mirroring the website's).
  */
 
 import { Ionicons } from '@expo/vector-icons';
-import { useFocusEffect } from 'expo-router';
+import { useFocusEffect, useRouter } from 'expo-router';
 import { useCallback, useState } from 'react';
-import { ActivityIndicator, Linking, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
-import { ApiError, currentServer } from '@/api/client';
+import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { ApiError } from '@/api/client';
 import * as Q from '@/api/qumanity';
 import { Avatar } from '@/components/Avatar';
 import { MembersSheet } from '@/components/MembersSheet';
@@ -23,6 +23,7 @@ import { colors, fonts, radius, space, timelineColors, tint } from '@/theme';
 const ACCENT = timelineColors.personal;
 
 export default function FamilyTree() {
+  const router = useRouter();
   const [status, setStatus] = useState<Q.FamilyStatus | null>(null);
   const [trail, setTrail] = useState<{ id: number; name: string }[]>([]);
   const [unit, setUnit] = useState<Q.FamilyNeighborhood | null>(null);
@@ -99,12 +100,12 @@ export default function FamilyTree() {
         <BackHeader title="Family Tree" />
         <View style={styles.empty}>
           <Ionicons name="git-network-outline" size={40} color={ACCENT} />
-          <Text style={styles.emptyTitle}>Activate your Family Tree on the website</Text>
+          <Text style={styles.emptyTitle}>Build your Family Tree</Text>
           <Lead>
-            A few questions — your relationship, your spouse, parents and children — build your family units. It takes about two minutes on
-            the Qumanity website; afterwards your tree, members and invitations all appear here.
+            Six short steps — your parents, your status, your spouse and children — create your family units and find relatives who are
+            already here. It takes about two minutes.
           </Lead>
-          <Button title="Open the website" icon="open-outline" onPress={() => Linking.openURL(`${currentServer()}/dashboard`)} />
+          <Button title="Build your Family Tree" icon="git-network" onPress={() => router.push('/family-activate')} />
         </View>
       </Screen>
     );

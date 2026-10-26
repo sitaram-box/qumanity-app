@@ -145,7 +145,7 @@ Every month belongs to one sun sign. The election for that sign runs in 4 weeks:
 
 ### Family Tree (family units)
 - `GET /api/family/status` → `{activated, groups:[{id, name, is_admin, is_founder, members}]}`.
-  - Activation (the 6-step wizard, `POST /api/family/activate`) **stays on the website**. Until a member has activated, the app's Family Tree screen links them there.
+  - Activation runs **in the app** (since 2026-10-26): `app/family-activate.tsx` mirrors the website's 6-step wizard (`static/js/family.js`). Until a member has activated, the Family Tree screen offers "Build your Family Tree". Details are in the next section.
 - `GET /api/family/node/<unit id>/neighborhood` → `{group_id, name, husband, wife, is_dormant, is_admin, members, unmarried_children[], parent_groups[] (with side), child_groups[]}`.
   - Despite "node" in the path, the id is a family unit. A non-member gets **404** (not 403), and the app shows "Ask to join".
 - `GET /api/family-groups/<id>/members` → `{members: MemberRow[]}`, with admins first.
@@ -155,3 +155,18 @@ Every month belongs to one sun sign. The election for that sign runs in 4 weeks:
 - `POST /api/family-groups/<id>/join-request` (the inbox kind is `family_group_join`) and `POST /api/family-groups/<id>/leave`.
 
 Checks for all of the above are in `tools/website-check/check_app_api.py` (138 pass as of 2026-10-26).
+
+### Family Tree activation wizard (in the app, 2026-10-26)
+The steps and payloads are the same as the website's `static/js/family.js`.
+
+**Steps**
+1. **Parents:** father and mother (required, with "passed away" switches), plus optional grandparents.
+2. **Status:** `single | married | separated | divorced | widowed`.
+3. **Spouse:** skipped for single. "Already on Qumanity?" looks up a Public ID and sends the spouse as `{action:"notify", user_id}`. Widowed marks a newly created spouse `is_deceased`. The spouse's parents are optional.
+4. **Children:** skipped for single. Asks yes/no first, then each child as `{name, gender: male|female|both}` (shown as Son, Daughter, Third gender).
+5. **Discover:** `GET /api/family/suggest?name=` for each of father, mother, spouse (unless already linked) and each child. Only `type: group` (→ `{action:"join", group_id, matched_node_id}`) and `type: unactivated_user` (→ `{action:"notify", user_id}`) are offered; the default is `{action:"create"}`. Grandparents and the spouse's parents are always created.
+6. **Review:** `POST /api/family/activate {father, mother, relationship, father_father?, father_mother?, mother_father?, mother_mother?}`.
+   - Then, unless single: `POST /api/family/marry {spouse, children[], marriage_status, spouse_father?, spouse_mother?}`.
+   - `marriage_status`: married → `active`, separated → `separated`, divorced → `dissolved`, widowed → `active`.
+   - Activation can only happen once (a second call returns 400).
+   - If `marry` fails, the member stays activated and the app offers "Try adding your spouse again".
