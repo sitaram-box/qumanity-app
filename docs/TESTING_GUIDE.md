@@ -7,7 +7,7 @@ The app talks to the Qumanity **website running on your Mac**. You and the app s
 ## 1. Start the website so phones can reach it
 ```bash
 cd ~/Desktop/Qumanity_DPG
-QM_HOST=0.0.0.0 QM_ADMIN_PRIVATE_IDS=014918240 QM_SECRET_KEY='choose-a-long-random-phrase' python3 app.py
+QM_HOST=0.0.0.0 QM_ADMIN_PRIVATE_IDS=<YOUR_ADMIN_PRIVATE_ID> QM_SECRET_KEY='choose-a-long-random-phrase' python3 app.py
 ```
 - The first time, macOS may ask whether Python may accept incoming connections. Choose **Allow**.
 - Keep `QM_SECRET_KEY` the same every time. It signs the app's sign-in tokens; if it changes, everyone has to sign in again.
@@ -28,7 +28,7 @@ An iPhone works the same way: scan the code with the Camera app, and it opens in
 
 | # | Test | Expected |
 |---|---|---|
-| 1 | **Sign in** with the Founder ID `014918240` and your PIN | Dashboard with 4 tabs: Global · Public · Personal · Private |
+| 1 | **Sign in** with your Admin Private ID (`<YOUR_ADMIN_PRIVATE_ID>`) and your PIN | Dashboard with 4 tabs: Global · Public · Personal · Private |
 | 2 | **Private** → *Show* next to the Private ID | asks for the PIN, shows the ID for 30 seconds, then hides it again |
 | 3 | **Public** → Village → write a post | appears under *Live voting* with 7 days to vote |
 | 4 | Sign out, **Create my Qumanity account** for a second person in the same village | 4 steps; at the end the 9-digit Private ID is shown once, with a Copy button |
