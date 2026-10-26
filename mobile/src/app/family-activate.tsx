@@ -12,6 +12,12 @@
  *
  * Every person becomes a slot {name, action: create|join|notify, ...} exactly as
  * family_core._resolve_slot() expects, so Step 6 only picks slots out by key.
+ *
+ * Every person can be "Already on Qumanity? Link by Public ID" (2026-10-26): Next looks up any
+ * typed 12-digit ID itself, the person is shown as a ProfileCard (never an ID; a private member
+ * shows as "Private until you are family"), and their slot becomes {action: "notify", user_id}.
+ * The website then reuses their place in the tree if they already have one, or creates one and
+ * invites them.
  */
 
 import { useRouter } from 'expo-router';
@@ -20,11 +26,13 @@ import { ActivityIndicator, Pressable, StyleSheet, Switch, Text, View } from 're
 import { ApiError } from '@/api/client';
 import * as Q from '@/api/qumanity';
 import { Avatar } from '@/components/Avatar';
+import { PublicIdLookup } from '@/components/ProfileCard';
 import { BackHeader, Button, Chip, ErrorText, Field, Label, Lead, Screen, Steps, Title } from '@/components/ui';
 import { colors, fonts, radius, space } from '@/theme';
 
-type Person = { name: string; deceased: boolean };
-type Child = { name: string; gender: Q.Gender | null };
+/** One person in the wizard; `found` is set once their Public ID has been looked up. */
+type Person = { name: string; deceased: boolean; onApp: boolean; code: string; found: Q.FoundPerson | null };
+type Child = Person & { gender: Q.Gender | null };
 type Step = 'parents' | 'status' | 'spouse' | 'children' | 'discover' | 'review' | 'done';
 type Slot = Q.FamilySlot & { key: string; label: string; skipDiscover?: boolean; resolved?: boolean };
 
@@ -54,7 +62,10 @@ const CHILD_GENDER: { value: Q.Gender; label: string }[] = [
   { value: 'female', label: 'Daughter' },
   { value: 'both', label: 'Third gender' },
 ];
-const empty = (): Person => ({ name: '', deceased: false });
+const empty = (): Person => ({ name: '', deceased: false, onApp: false, code: '', found: null });
+const emptyChild = (): Child => ({ ...empty(), gender: null });
+/** The name to record: what they typed, else the found member's real name (never a private one). */
+const nameOf = (p: Person) => p.name.trim() || (p.found && !p.found.hidden ? p.found.name : '');
 
 export default function FamilyActivate() {
   const router = useRouter();
@@ -69,10 +80,7 @@ export default function FamilyActivate() {
   // Step 2
   const [relationship, setRelationship] = useState<Q.Relationship | null>(null);
   // Step 3
-  const [spouseName, setSpouseName] = useState('');
-  const [spouseOnApp, setSpouseOnApp] = useState(false);
-  const [spouseCode, setSpouseCode] = useState('');
-  const [spouseFound, setSpouseFound] = useState<Q.FoundPerson | null>(null);
+  const [spouse, setSpouse] = useState<Person>(empty());
   const [searching, setSearching] = useState(false);
   const [spParentsKnown, setSpParentsKnown] = useState<boolean | null>(null);
   const [sf, setSf] = useState<Person>(empty());
@@ -94,9 +102,61 @@ export default function FamilyActivate() {
   };
   const married = relationship !== null && relationship !== 'single';
 
+  /**
+   * Before leaving a step: anyone switched to "Already on Qumanity" whose 12-digit ID was typed
+   * but not looked up is looked up now (no separate Find tap needed). Returns the updated people,
+   * or null with the error shown (ID not 12 digits, not found, or a private member with no name).
+   */
+  async function resolve(people: { p: Person; set: (p: Person) => void; label: string }[]): Promise<Person[] | null> {
+    setError(undefined);
+    setSearching(true);
+    try {
+      const out: Person[] = [];
+      for (const { p, set, label } of people) {
+        let next = p;
+        if (p.onApp && !p.found) {
+          if (p.code.length !== 12) {
+            setError(`${label}: enter their 12-digit Public ID, or switch off "Already on Qumanity".`);
+            return null;
+          }
+          try {
+            const found = await Q.searchPerson(p.code);
+            next = { ...p, found, name: p.name.trim() ? p.name : found.hidden ? p.name : found.name };
+            set(next);
+          } catch (e) {
+            setError(`${label}: ${(e as Error).message}`);
+            return null;
+          }
+        }
+        if (next.found?.hidden && !next.name.trim()) {
+          setError(`${label}: their name is private — type it as you know them.`);
+          return null;
+        }
+        out.push(next);
+      }
+      return out;
+    } finally {
+      setSearching(false);
+    }
+  }
+  const gpSetter = (k: 'ff' | 'fm' | 'mf' | 'mm') => (v: Person) => setGp((g) => ({ ...g, [k]: v }));
+
   // ---- Step 1 ----
-  function nextFromParents() {
-    if (!father.name.trim() || !mother.name.trim()) return setError("Both parents' names are required.");
+  async function nextFromParents() {
+    const r = await resolve([
+      { p: father, set: setFather, label: 'Father' },
+      { p: mother, set: setMother, label: 'Mother' },
+      ...(gpKnown
+        ? ([
+            ['ff', "Father's father"],
+            ['fm', "Father's mother"],
+            ['mf', "Mother's father"],
+            ['mm', "Mother's mother"],
+          ] as const).map(([k, label]) => ({ p: gp[k], set: gpSetter(k), label }))
+        : []),
+    ]);
+    if (!r) return;
+    if (!nameOf(r[0]) || !nameOf(r[1])) return setError("Both parents' names are required.");
     go('status');
   }
 
@@ -108,54 +168,52 @@ export default function FamilyActivate() {
   }
 
   // ---- Step 3 ----
-  /** Looks the Public ID up; returns the person (also stored), or null with the error shown. */
-  async function findSpouse(): Promise<Q.FoundPerson | null> {
-    setSearching(true);
-    setError(undefined);
-    setSpouseFound(null);
-    try {
-      const p = await Q.searchPerson(spouseCode.replace(/\D/g, ''));
-      setSpouseFound(p);
-      if (!spouseName.trim()) setSpouseName(p.name);
-      return p;
-    } catch (e) {
-      setError((e as Error).message);
-      return null;
-    } finally {
-      setSearching(false);
-    }
-  }
   async function nextFromSpouse() {
-    let found = spouseFound;
-    if (spouseOnApp && !found) {
-      // A typed but not yet looked-up Public ID: look it up now instead of making them tap Find.
-      if (spouseCode.length !== 12) return setError('Enter their 12-digit Public ID, or switch off "already on Qumanity".');
-      found = await findSpouse();
-      if (!found) return; // not found: findSpouse() shows why
-    }
-    if (!spouseName.trim() && !found) return setError("Spouse's name is required.");
+    const r = await resolve([
+      { p: spouse, set: setSpouse, label: 'Spouse' },
+      ...(spParentsKnown
+        ? [
+            { p: sf, set: setSf, label: "Spouse's father" },
+            { p: sm, set: setSm, label: "Spouse's mother" },
+          ]
+        : []),
+    ]);
+    if (!r) return;
+    if (!nameOf(r[0])) return setError("Spouse's name is required.");
     go('children');
   }
 
   // ---- Step 4 ----
-  function nextFromChildren() {
+  async function nextFromChildren() {
     if (hasChildren === null) return setError('Please choose Yes or No.');
     if (!hasChildren) return enterDiscover([]);
-    const named = children.filter((c) => c.name.trim());
+    const r = await resolve(
+      children.map((c, i) => ({
+        p: c,
+        set: (v: Person) => setChildren((all) => all.map((x, j) => (j === i ? { ...x, ...v } : x))),
+        label: `Child ${i + 1}`,
+      })),
+    );
+    if (!r) return;
+    const kids: Child[] = r.map((p, i) => ({ ...children[i], ...p }));
+    const named = kids.filter((c) => nameOf(c));
     const missing = named.find((c) => !c.gender);
-    if (missing) return setError(`Please choose Son, Daughter or Third gender for ${missing.name.trim()}.`);
+    if (missing) return setError(`Please choose Son, Daughter or Third gender for ${nameOf(missing)}.`);
     if (!named.length) return setError('Add at least one child, or choose No.');
     enterDiscover(named);
   }
 
   // ---- Step 5: build the slots, then look each person up ----
+  /** A linked person -> {action: "notify", user_id} (already resolved); anyone else -> "create". */
+  const personSlot = (key: string, label: string, p: Person, extra: Partial<Slot> = {}): Slot =>
+    p.found
+      ? { key, label, name: nameOf(p), action: 'notify', user_id: p.found.user_id, resolved: true, ...extra, is_deceased: undefined }
+      : { key, label, name: nameOf(p), is_deceased: p.deceased, action: 'create', ...extra };
+
   function enterDiscover(kids: Child[]) {
-    const list: Slot[] = [
-      { key: 'father', label: 'Father', name: father.name.trim(), is_deceased: father.deceased, action: 'create' },
-      { key: 'mother', label: 'Mother', name: mother.name.trim(), is_deceased: mother.deceased, action: 'create' },
-    ];
-    // Grandparents and the spouse's parents are always "create" (not matched) — same scoped
-    // simplification as the website — but still listed for transparency.
+    const list: Slot[] = [personSlot('father', 'Father', father), personSlot('mother', 'Mother', mother)];
+    // Grandparents and the spouse's parents skip the name-matching step (same scoped
+    // simplification as the website): each is either linked by Public ID or created new.
     if (gpKnown) {
       (
         [
@@ -165,22 +223,18 @@ export default function FamilyActivate() {
           ['mm', 'mother_mother', "Mother's mother"],
         ] as const
       ).forEach(([k, key, label]) => {
-        if (gp[k].name.trim()) list.push({ key, label, name: gp[k].name.trim(), is_deceased: gp[k].deceased, action: 'create', skipDiscover: true });
+        if (nameOf(gp[k])) list.push(personSlot(key, label, gp[k], { skipDiscover: true }));
       });
     }
     if (relationship && relationship !== 'single') {
-      if (spouseOnApp && spouseFound) {
-        list.push({ key: 'spouse', label: 'Spouse', name: spouseName.trim(), action: 'notify', user_id: spouseFound.user_id, resolved: true });
-      } else {
-        // Widowed marks a newly created spouse as deceased, as on the website.
-        list.push({ key: 'spouse', label: 'Spouse', name: spouseName.trim(), is_deceased: relationship === 'widowed', action: 'create' });
-      }
+      // Widowed marks a newly created spouse as deceased, as on the website.
+      list.push(personSlot('spouse', 'Spouse', { ...spouse, deceased: relationship === 'widowed' }));
       if (spParentsKnown) {
-        if (sf.name.trim()) list.push({ key: 'spouse_father', label: "Spouse's father", name: sf.name.trim(), is_deceased: sf.deceased, action: 'create', skipDiscover: true });
-        if (sm.name.trim()) list.push({ key: 'spouse_mother', label: "Spouse's mother", name: sm.name.trim(), is_deceased: sm.deceased, action: 'create', skipDiscover: true });
+        if (nameOf(sf)) list.push(personSlot('spouse_father', "Spouse's father", sf, { skipDiscover: true }));
+        if (nameOf(sm)) list.push(personSlot('spouse_mother', "Spouse's mother", sm, { skipDiscover: true }));
       }
     }
-    kids.forEach((c, i) => list.push({ key: `child_${i + 1}`, label: `Child ${i + 1}`, name: c.name.trim(), gender: c.gender ?? undefined, action: 'create' }));
+    kids.forEach((c, i) => list.push(personSlot(`child_${i + 1}`, `Child ${i + 1}`, c, { gender: c.gender ?? undefined })));
 
     setSlots(list);
     setDecided({});
@@ -328,10 +382,10 @@ export default function FamilyActivate() {
           <YesNo label="Do you know your grandparents' names? (optional)" value={gpKnown} onChange={setGpKnown} />
           {gpKnown && (
             <View style={styles.card}>
-              <PersonInput label="Father's father" value={gp.ff} onChange={(v) => setGp({ ...gp, ff: v })} />
-              <PersonInput label="Father's mother" value={gp.fm} onChange={(v) => setGp({ ...gp, fm: v })} />
-              <PersonInput label="Mother's father" value={gp.mf} onChange={(v) => setGp({ ...gp, mf: v })} />
-              <PersonInput label="Mother's mother" value={gp.mm} onChange={(v) => setGp({ ...gp, mm: v })} />
+              <PersonInput label="Father's father" value={gp.ff} onChange={gpSetter('ff')} />
+              <PersonInput label="Father's mother" value={gp.fm} onChange={gpSetter('fm')} />
+              <PersonInput label="Mother's father" value={gp.mf} onChange={gpSetter('mf')} />
+              <PersonInput label="Mother's mother" value={gp.mm} onChange={gpSetter('mm')} />
             </View>
           )}
         </>
@@ -352,44 +406,8 @@ export default function FamilyActivate() {
       {step === 'spouse' && relationship && relationship !== 'single' && (
         <>
           <Title>{SPOUSE_TITLE[relationship]}</Title>
-          <Field label="Name" value={spouseName} onChangeText={setSpouseName} maxLength={80} />
-          {relationship === 'widowed' && !spouseOnApp && <Text style={styles.hint}>They will be remembered as having passed away.</Text>}
-          <View style={styles.switchRow}>
-            <Text style={styles.switchLabel}>Already on Qumanity? Link them by Public ID</Text>
-            <Switch
-              value={spouseOnApp}
-              onValueChange={(v) => {
-                setSpouseOnApp(v);
-                setSpouseFound(null);
-              }}
-              trackColor={{ true: colors.gold, false: colors.line }}
-            />
-          </View>
-          {spouseOnApp && (
-            <View style={styles.card}>
-              <Field
-                label="Their 12-digit Public ID"
-                value={spouseCode.replace(/(\d{4})(?=\d)/g, '$1 ')}
-                onChangeText={(t) => {
-                  setSpouseCode(t.replace(/\D/g, '').slice(0, 12));
-                  setSpouseFound(null);
-                }}
-                keyboardType="number-pad"
-                placeholder="1234 5678 9012"
-              />
-              {spouseFound ? (
-                <View style={styles.found}>
-                  <Avatar user={spouseFound} size={40} />
-                  <Text style={[styles.v, { flex: 1 }]}>
-                    ✓ {spouseFound.name}
-                    {spouseFound.place ? <Text style={styles.hint}> · {spouseFound.place}</Text> : null}
-                  </Text>
-                </View>
-              ) : (
-                <Button title="Find" variant="ghost" icon="search" onPress={findSpouse} busy={searching} disabled={spouseCode.length !== 12} />
-              )}
-            </View>
-          )}
+          <PersonInput label="Name" value={spouse} onChange={setSpouse} allowDeceased={false} />
+          {relationship === 'widowed' && !spouse.onApp && <Text style={styles.hint}>They will be remembered as having passed away.</Text>}
           <YesNo label="Do you know your spouse's parents' names? (optional)" value={spParentsKnown} onChange={setSpParentsKnown} />
           {spParentsKnown && (
             <View style={styles.card}>
@@ -408,7 +426,7 @@ export default function FamilyActivate() {
             value={hasChildren}
             onChange={(v) => {
               setHasChildren(v);
-              if (v && children.length === 0) setChildren([{ name: '', gender: null }]);
+              if (v && children.length === 0) setChildren([emptyChild()]);
             }}
           />
           {hasChildren &&
@@ -420,7 +438,7 @@ export default function FamilyActivate() {
                     <Text style={styles.remove}>Remove</Text>
                   </Pressable>
                 </View>
-                <Field label="Name" value={c.name} onChangeText={(t) => setChildren(children.map((x, j) => (j === i ? { ...x, name: t } : x)))} maxLength={80} />
+                <PersonInput label="Name" value={c} onChange={(v) => setChildren((all) => all.map((x, j) => (j === i ? { ...x, ...v } : x)))} />
                 <View style={styles.choices}>
                   {CHILD_GENDER.map((g) => (
                     <Chip key={g.value} label={g.label} selected={c.gender === g.value} onPress={() => setChildren(children.map((x, j) => (j === i ? { ...x, gender: g.value } : x)))} />
@@ -428,7 +446,7 @@ export default function FamilyActivate() {
                 </View>
               </View>
             ))}
-          {hasChildren && <Button title="Add another child" variant="ghost" icon="add" onPress={() => setChildren([...children, { name: '', gender: null }])} />}
+          {hasChildren && <Button title="Add another child" variant="ghost" icon="add" onPress={() => setChildren([...children, emptyChild()])} />}
         </>
       )}
 
@@ -444,7 +462,7 @@ export default function FamilyActivate() {
                   {s.label}: {s.name}
                 </Text>
                 {s.resolved ? (
-                  <Text style={styles.ok}>✓ Linked to an existing member — we'll notify them.</Text>
+                  <Text style={styles.ok}>✓ Linked by Public ID to their Qumanity account.</Text>
                 ) : s.skipDiscover ? (
                   <Text style={styles.hint}>A new profile will be created.</Text>
                 ) : decided[s.key] ? (
@@ -515,7 +533,7 @@ export default function FamilyActivate() {
                 key={s.key}
                 k={s.label}
                 v={`${s.name}${s.gender ? ` (${CHILD_GENDER.find((g) => g.value === s.gender)?.label})` : ''}${s.is_deceased ? ' (passed away)' : ''} — ${
-                  s.action === 'join' ? 'request to join an existing unit' : s.action === 'notify' ? 'notify an existing member' : 'create a new profile'
+                  s.action === 'join' ? 'request to join an existing unit' : s.action === 'notify' ? 'link to their Qumanity account' : 'create a new profile'
                 }`}
               />
             ))}
@@ -545,7 +563,7 @@ export default function FamilyActivate() {
             />
           )}
           {[...result.activate.notified, ...(result.marry?.notified ?? [])].map((n, i) => (
-            <Row key={`n${i}`} k="Notified" v={`${n.name} — invited to build their Family Tree`} />
+            <Row key={`n${i}`} k={n.name} v={linkedText(n.label, result)} />
           ))}
           {result.alreadyMarried && (
             <Row k="Your marriage" v="Already recorded in your spouse's family — you're linked there as their partner." />
@@ -577,14 +595,46 @@ function forSlot(key: string, sug: Q.FamilySuggestion[]): Q.FamilySuggestion[] {
   return sug.filter((m) => m.type !== 'group' || ((m.matched_role === 'husband' || m.matched_role === 'wife') && m.partner_slot_open === true));
 }
 
-function PersonInput({ label, value, onChange }: { label: string; value: Person; onChange: (p: Person) => void }) {
+/** How a linked person ended up: their existing place in the tree was used, or they were invited. */
+function linkedText(label: string, result: { activate: Q.FamilyResult; marry?: Q.FamilyResult }): string {
+  const entry = [...(result.activate.created_node_ids ?? []), ...(result.marry?.created_node_ids ?? [])].find((n) => n.label === label);
+  return entry?.linked_existing
+    ? 'Linked to their own place in the Family Tree.'
+    : "Invited to build their Family Tree. An admin can link them to their account from the tree.";
+}
+
+/** Name, "passed away", and "Already on Qumanity? Link by Public ID" -> ProfileCard. */
+function PersonInput({ label, value, onChange, allowDeceased = true }: { label: string; value: Person; onChange: (p: Person) => void; allowDeceased?: boolean }) {
   return (
     <View>
       <Field label={label} value={value.name} onChangeText={(t) => onChange({ ...value, name: t })} maxLength={80} />
       <View style={[styles.switchRow, { marginTop: -space.sm }]}>
-        <Text style={styles.hint}>Passed away</Text>
-        <Switch value={value.deceased} onValueChange={(v) => onChange({ ...value, deceased: v })} trackColor={{ true: colors.faint, false: colors.line }} accessibilityLabel={`${label}: passed away`} />
+        <Text style={styles.hint}>Already on Qumanity? Link by Public ID</Text>
+        <Switch
+          value={value.onApp}
+          onValueChange={(v) => onChange({ ...value, onApp: v, found: null, deceased: v ? false : value.deceased })}
+          trackColor={{ true: colors.gold, false: colors.line }}
+          accessibilityLabel={`${label}: already on Qumanity`}
+        />
       </View>
+      {value.onApp ? (
+        <View style={styles.linkBox}>
+          <PublicIdLookup
+            code={value.code}
+            onCode={(d) => onChange({ ...value, code: d, found: null })}
+            found={value.found}
+            onFound={(p) => onChange({ ...value, found: p, name: value.name.trim() || !p || p.hidden ? value.name : p.name })}
+          />
+          {value.found?.hidden && !value.name.trim() && <Text style={styles.hint}>Their name is private — type it above as you know them.</Text>}
+        </View>
+      ) : (
+        allowDeceased && (
+          <View style={styles.switchRow}>
+            <Text style={styles.hint}>Passed away</Text>
+            <Switch value={value.deceased} onValueChange={(v) => onChange({ ...value, deceased: v })} trackColor={{ true: colors.faint, false: colors.line }} accessibilityLabel={`${label}: passed away`} />
+          </View>
+        )
+      )}
     </View>
   );
 }
@@ -617,6 +667,7 @@ const styles = StyleSheet.create({
   switchRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: space.md, marginVertical: space.xs },
   switchLabel: { flex: 1, color: colors.text, fontFamily: fonts.medium, fontSize: 14 },
   found: { flexDirection: 'row', alignItems: 'center', gap: space.sm },
+  linkBox: { paddingLeft: space.sm, borderLeftWidth: 2, borderColor: colors.gold, marginBottom: space.sm },
   suggestion: { gap: 6, paddingVertical: 6, borderTopWidth: StyleSheet.hairlineWidth, borderColor: colors.line },
   decidedRow: { flexDirection: 'row', alignItems: 'center', gap: space.sm },
   childHead: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },

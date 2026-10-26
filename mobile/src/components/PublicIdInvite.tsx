@@ -8,7 +8,7 @@ import { useState } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import * as Q from '@/api/qumanity';
 import { colors, fonts, radius, space } from '@/theme';
-import { Avatar } from './Avatar';
+import { ProfileCard } from './ProfileCard';
 import { Button, ErrorText, Field } from './ui';
 
 const group4 = (s: string) => s.replace(/(\d{4})(?=\d)/g, '$1 ');
@@ -41,7 +41,7 @@ export function PublicIdInvite({ onInvite, label = 'Add member by Public ID' }: 
     setError(undefined);
     try {
       await onInvite(found.user_id);
-      setSent(`Invitation sent to ${found.name}. They'll see it in their notifications.`);
+      setSent(`Invitation sent${found.hidden ? '' : ` to ${found.name}`}. They'll see it in their notifications.`);
       setFound(null);
       setCode('');
     } catch (e) {
@@ -66,14 +66,7 @@ export function PublicIdInvite({ onInvite, label = 'Add member by Public ID' }: 
       />
       {!found && <Button title="Find" variant="ghost" icon="search" onPress={find} busy={busy === 'find'} disabled={digits.length !== 12} />}
       {found && (
-        <View style={styles.person}>
-          <Avatar user={found} size={44} />
-          <View style={{ flex: 1 }}>
-            <Text style={styles.name}>{found.name}</Text>
-            {!!found.place && <Text style={styles.meta}>{found.place}</Text>}
-          </View>
-          <Button title="Invite" size="sm" icon="person-add" onPress={invite} busy={busy === 'invite'} />
-        </View>
+        <ProfileCard person={found} compact right={<Button title="Invite" size="sm" icon="person-add" onPress={invite} busy={busy === 'invite'} />} />
       )}
       {sent && <Text style={styles.ok}>{sent}</Text>}
       <ErrorText>{error}</ErrorText>
@@ -84,8 +77,5 @@ export function PublicIdInvite({ onInvite, label = 'Add member by Public ID' }: 
 const styles = StyleSheet.create({
   box: { marginTop: space.lg, padding: space.md, borderRadius: radius.lg, backgroundColor: colors.panel, borderWidth: StyleSheet.hairlineWidth, borderColor: colors.line },
   title: { color: colors.text, fontFamily: fonts.bold, fontSize: 14, marginBottom: space.sm },
-  person: { flexDirection: 'row', alignItems: 'center', gap: space.md, marginTop: space.xs },
-  name: { color: colors.text, fontFamily: fonts.bold, fontSize: 14.5 },
-  meta: { color: colors.dim, fontFamily: fonts.body, fontSize: 12 },
   ok: { color: colors.earth, fontFamily: fonts.medium, fontSize: 13, marginTop: space.sm },
 });

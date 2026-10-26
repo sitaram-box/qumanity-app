@@ -10,7 +10,7 @@ import { router, useFocusEffect } from 'expo-router';
 import { useCallback, useState } from 'react';
 import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import * as Q from '@/api/qumanity';
-import { Avatar } from '@/components/Avatar';
+import { ProfileCard } from '@/components/ProfileCard';
 import { Button, Chip, ErrorText, Label, Screen, TabHeading } from '@/components/ui';
 import { colors, fonts, radius, space, timelineColors, tint } from '@/theme';
 import { BUCKETS, countFor, groupsInBucket } from '@/lib/groupBuckets';
@@ -167,13 +167,7 @@ function FindPerson({ owned }: { owned: Q.PersonalGroup[] }) {
       </View>
       {person && (
         <View style={styles.card}>
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: space.md }}>
-            <Avatar user={person} size={44} />
-            <View style={{ flex: 1 }}>
-              <Text style={styles.cardTitle}>{person.name}</Text>
-              {person.place && <Text style={styles.meta}>{person.place}</Text>}
-            </View>
-          </View>
+          <ProfileCard person={person} compact />
           <TextInput
             value={message}
             onChangeText={setMessage}

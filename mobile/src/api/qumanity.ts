@@ -231,11 +231,16 @@ export interface ChatMessage {
   text: string;
   at: string;
 }
-export type ChatKind = 'sub' | 'group' | 'private';
+/** 'family' = a Family Tree unit's chat (website 2026-10-26: /api/family-groups/<id>/messages). */
+export type ChatKind = 'sub' | 'group' | 'private' | 'family';
 export async function chatLoad(kind: ChatKind, id: number): Promise<{ title: string; messages: ChatMessage[]; extra?: unknown }> {
   if (kind === 'sub') {
     const r = await api<{ name: string; messages: ChatMessage[] }>(`/api/chat/${id}`);
     return { title: r.name, messages: r.messages };
+  }
+  if (kind === 'family') {
+    const r = await api<{ name: string; messages: ChatMessage[]; members: MemberRow[]; is_admin: boolean }>(`/api/family-groups/${id}/messages`);
+    return { title: r.name, messages: r.messages, extra: r };
   }
   if (kind === 'group') {
     const r = await api<{ name: string; messages: ChatMessage[]; members: MemberRow[]; is_owner: boolean }>(
@@ -249,7 +254,14 @@ export async function chatLoad(kind: ChatKind, id: number): Promise<{ title: str
   return { title: r.name, messages: r.messages, extra: r };
 }
 export function chatSend(kind: ChatKind, id: number, text: string) {
-  const path = kind === 'sub' ? `/api/chat/${id}` : kind === 'group' ? `/api/people/groups/${id}/messages` : `/api/people/chats/${id}`;
+  const path =
+    kind === 'sub'
+      ? `/api/chat/${id}`
+      : kind === 'group'
+        ? `/api/people/groups/${id}/messages`
+        : kind === 'family'
+          ? `/api/family-groups/${id}/messages`
+          : `/api/people/chats/${id}`;
   return api<{ status: string }>(path, { body: { text } });
 }
 
@@ -341,11 +353,18 @@ export const invite = (group_id: number, user_id: number) => api<{ status: strin
 export const messageRequest = (user_id: number, text: string) => api<{ status: string }>('/api/people/message', { body: { user_id, text } });
 export interface FoundPerson {
   user_id: number;
+  /** For a hidden member this is their Account ID standing in for the name — never show it;
+   * show "Private until you are family" when `hidden` (see components/ProfileCard). */
   name: string;
   gender: Gender;
   place: string | null;
   account_id?: string;
   profile_picture_url?: string | null;
+  /** Website 2026-10-26: never masked. */
+  age_group?: string | null;
+  /** Village + state, or state only when hidden. */
+  location?: string | null;
+  hidden?: boolean;
 }
 export interface InboxItem {
   id: number;
@@ -680,6 +699,10 @@ export const familyJoinRequest = (groupId: number) => api<{ status: 'requested' 
  * while your parents/children are active members there; in-laws' unit any time. A 400 explains why.
  * After leaving, only an admin's invite brings you back. */
 export const familyLeave = (groupId: number) => api<{ status: 'left' }>(`/api/family-groups/${groupId}/leave`, { body: {} });
+/** Link an unclaimed person in the tree (any node, not only founders) to a real member by their
+ * 12-digit Public ID. Only an admin of a unit that person belongs to may do this. */
+export const familyLinkNode = (nodeId: number, publicId: string) =>
+  api<{ status: string }>(`/api/family/node/${nodeId}/link`, { body: { user_id: publicId } });
 /** Admins only; a founder can't be removed. The removed member's place in the tree stays. */
 export const familyRemoveMember = (groupId: number, user_id: number) =>
   api<{ status: 'removed' }>(`/api/family-groups/${groupId}/remove-member`, { body: { user_id } });
@@ -724,6 +747,8 @@ export const familySuggest = (name: string) =>
 
 export interface FamilyResult {
   joined_requests: { label: string; name: string; group_id: number }[];
+  /** Per person: the node made or reused; linked_existing = a linked member's own place was reused. */
+  created_node_ids?: { label: string; node_id: number; name: string; linked_existing?: boolean; is_deceased?: boolean }[];
   notified: { label: string; name: string; user_id: number }[];
   parents_group_id?: number;
   parents_group_name?: string;

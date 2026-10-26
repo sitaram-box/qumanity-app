@@ -3,6 +3,8 @@
  * group ("group") and a private one-to-one chat ("private"). Text only for now
  * (media needs file storage). Refreshes every few seconds while open. Every sender has an
  * avatar (picture or initials); group chats open the Members list from the header.
+ * "family" is a Family Tree unit's chat (2026-10-26): members only, with the Members list in the
+ * header; it has no rename/business info (those belong to personal groups).
  */
 
 import { Ionicons } from '@expo/vector-icons';
@@ -38,7 +40,7 @@ export default function Chat() {
       const r = await Q.chatLoad(kind, Number(id));
       setTitle(r.title);
       setMessages(r.messages);
-      if (kind === 'group') setExtra(r.extra as GroupExtra);
+      if (kind === 'group' || kind === 'family') setExtra(r.extra as GroupExtra);
       if (kind === 'private') setPrivateExtra(r.extra as PrivateExtra);
       setError(undefined);
     } catch (e) {
@@ -85,25 +87,27 @@ export default function Chat() {
           <BackHeader
             title={title || '…'}
             right={
-              kind === 'group' || kind === 'private' ? (
+              kind === 'group' || kind === 'private' || kind === 'family' ? (
                 <View style={styles.headRight}>
                   {kind === 'private' && privateExtra && (
                     <Avatar user={{ name: privateExtra.with, gender: privateExtra.with_gender, profile_picture_url: privateExtra.with_profile_picture_url }} size={30} />
                   )}
-                  {kind === 'group' && extra && (
+                  {(kind === 'group' || kind === 'family') && extra && (
                     <Pressable onPress={() => setShowMembers(true)} accessibilityRole="button" accessibilityLabel={`Members, ${extra.members.length}`} style={styles.membersBtn}>
                       <Ionicons name="people" size={16} color={colors.gold} />
                       <Text style={styles.membersText}>{extra.members.length}</Text>
                     </Pressable>
                   )}
-                  <Pressable onPress={() => setShowInfo((v) => !v)} accessibilityRole="button" accessibilityLabel="Chat info">
-                    <Ionicons name="information-circle" size={26} color={colors.gold} />
-                  </Pressable>
+                  {kind !== 'family' && (
+                    <Pressable onPress={() => setShowInfo((v) => !v)} accessibilityRole="button" accessibilityLabel="Chat info">
+                      <Ionicons name="information-circle" size={26} color={colors.gold} />
+                    </Pressable>
+                  )}
                 </View>
               ) : null
             }
           />
-          {showInfo && extra && <GroupInfo extra={extra} editable={!!editable} groupId={Number(id)} onSaved={load} />}
+          {showInfo && kind === 'group' && extra && <GroupInfo extra={extra} editable={!!editable} groupId={Number(id)} onSaved={load} />}
           {showInfo && kind === 'private' && privateExtra && (
             <PrivateInfo extra={privateExtra} chatId={Number(id)} onSaved={load} onLeft={() => router.replace('/private-groups')} />
           )}
@@ -159,7 +163,7 @@ export default function Chat() {
           </View>
         )}
       </View>
-      {kind === 'group' && extra && <MembersSheet visible={showMembers} onClose={() => setShowMembers(false)} title={`${title} · Members`} members={extra.members} />}
+      {(kind === 'group' || kind === 'family') && extra && <MembersSheet visible={showMembers} onClose={() => setShowMembers(false)} title={`${title} · Members`} members={extra.members} />}
     </SafeAreaView>
   );
 }

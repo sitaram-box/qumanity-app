@@ -11,16 +11,21 @@
  * your own unit (you founded it) or your birth unit while unmarried / while your parents or children
  * are active there — the website says why, and the app shows that message as-is. Admins can remove
  * members (not founders). Anyone who left or was removed needs an admin's invite to come back.
+ *
+ * Chat opens the unit's own group chat (chat/family/<id>). Any person in the tree who isn't on
+ * Qumanity yet ("not joined yet") can be tapped to link them to their real account by Public ID —
+ * the website lets an admin of a unit that person belongs to do this, and explains otherwise.
  */
 
 import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect, useRouter } from 'expo-router';
 import { useCallback, useState } from 'react';
-import { ActivityIndicator, Alert, Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Alert, Modal, Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { ApiError } from '@/api/client';
 import * as Q from '@/api/qumanity';
 import { Avatar } from '@/components/Avatar';
 import { MembersSheet } from '@/components/MembersSheet';
+import { PublicIdLookup } from '@/components/ProfileCard';
 import { PublicIdInvite } from '@/components/PublicIdInvite';
 import { BackHeader, Button, ErrorText, Lead, Screen, SectionTitle } from '@/components/ui';
 import { colors, fonts, radius, space, timelineColors, tint } from '@/theme';
@@ -40,6 +45,12 @@ export default function FamilyTree() {
   const [joinMsg, setJoinMsg] = useState<string>();
   const [leaving, setLeaving] = useState(false);
   const [leaveMsg, setLeaveMsg] = useState<{ ok: boolean; text: string } | null>(null);
+  // Linking a "not joined yet" person to their real account
+  const [linkFor, setLinkFor] = useState<Q.FamilyPerson | null>(null);
+  const [linkCode, setLinkCode] = useState('');
+  const [linkFound, setLinkFound] = useState<Q.FoundPerson | null>(null);
+  const [linkBusy, setLinkBusy] = useState(false);
+  const [linkErr, setLinkErr] = useState<string>();
 
   const open = useCallback(async (id: number, name: string, mode: 'push' | 'reset' | 'back' = 'push') => {
     setLoading(true);
@@ -114,6 +125,28 @@ export default function FamilyTree() {
       { text: 'Cancel', style: 'cancel' },
       { text: 'Leave', style: 'destructive', onPress: () => leave(u) },
     ]);
+  }
+
+  function startLink(p: Q.FamilyPerson) {
+    setLinkFor(p);
+    setLinkCode('');
+    setLinkFound(null);
+    setLinkErr(undefined);
+  }
+
+  async function link() {
+    if (!linkFor || !linkFound || !unit) return;
+    setLinkBusy(true);
+    setLinkErr(undefined);
+    try {
+      await Q.familyLinkNode(linkFor.id, linkCode);
+      setLinkFor(null);
+      await open(unit.group_id, unit.name, 'back'); // reload this unit: they now show as themselves
+    } catch (e) {
+      setLinkErr((e as Error).message);
+    } finally {
+      setLinkBusy(false);
+    }
   }
 
   async function askToJoin(id: number) {
@@ -215,9 +248,9 @@ export default function FamilyTree() {
           <View style={[styles.core, unit.is_dormant && { opacity: 0.55 }]}>
             <Text style={styles.coreLabel}>THIS FAMILY UNIT</Text>
             <View style={styles.couple}>
-              <PersonBadge person={unit.husband} size={58} />
+              <PersonBadge person={unit.husband} size={58} onLink={startLink} />
               <Ionicons name="heart" size={18} color={colors.fire} style={{ marginTop: 18 }} />
-              <PersonBadge person={unit.wife} size={58} />
+              <PersonBadge person={unit.wife} size={58} onLink={startLink} />
             </View>
             <Text style={styles.meta}>
               {unit.members} {unit.members === 1 ? 'member' : 'members'}
@@ -233,7 +266,7 @@ export default function FamilyTree() {
               {unit.unmarried_children.length > 0 && (
                 <View style={styles.childRow}>
                   {unit.unmarried_children.map((c) => (
-                    <PersonBadge key={c.id} person={c} size={46} />
+                    <PersonBadge key={c.id} person={c} size={46} onLink={startLink} />
                   ))}
                 </View>
               )}
@@ -244,12 +277,45 @@ export default function FamilyTree() {
           )}
 
           <View style={styles.actions}>
+            <Button
+              title="Chat"
+              icon="chatbubbles"
+              onPress={() => router.push({ pathname: '/chat/[kind]/[id]', params: { kind: 'family', id: String(unit.group_id) } })}
+              style={{ flex: 1 }}
+            />
             <Button title="Members" icon="people" variant="soft" onPress={() => showMembersOf(unit.group_id)} style={{ flex: 1 }} />
             <Button title="Leave" icon="exit-outline" variant="ghost" onPress={() => confirmLeave(unit)} busy={leaving} style={{ flex: 1 }} />
           </View>
           {unit.is_admin && <PublicIdInvite label="Add to this family by Public ID" onInvite={(uid) => Q.familyInvite(unit.group_id, uid)} />}
         </>
       )}
+
+      <Modal visible={!!linkFor} transparent animationType="slide" onRequestClose={() => setLinkFor(null)}>
+        <View style={styles.backdrop}>
+          <View style={styles.sheet}>
+            <View style={styles.sheetHead}>
+              <Text style={styles.sheetTitle}>Who is {linkFor?.name}?</Text>
+              <Pressable onPress={() => setLinkFor(null)} accessibilityRole="button" accessibilityLabel="Close" hitSlop={10}>
+                <Text style={styles.close}>Close</Text>
+              </Pressable>
+            </View>
+            <Text style={styles.metaText}>
+              If {linkFor?.name} is already on Qumanity, enter their Public ID. Check the card, then link: they appear as themselves in this tree.
+            </Text>
+            <PublicIdLookup
+              code={linkCode}
+              onCode={(d) => {
+                setLinkCode(d);
+                setLinkFound(null);
+              }}
+              found={linkFound}
+              onFound={setLinkFound}
+            />
+            <ErrorText>{linkErr}</ErrorText>
+            <Button title="Link" icon="link" onPress={link} busy={linkBusy} disabled={!linkFound} />
+          </View>
+        </View>
+      </Modal>
 
       {leaveMsg && <Text style={[styles.leaveMsg, { color: leaveMsg.ok ? colors.earth : colors.danger }]}>{leaveMsg.text}</Text>}
 
@@ -271,7 +337,7 @@ export default function FamilyTree() {
   );
 }
 
-function PersonBadge({ person, size }: { person: Q.FamilyPerson | null; size: number }) {
+function PersonBadge({ person, size, onLink }: { person: Q.FamilyPerson | null; size: number; onLink?: (p: Q.FamilyPerson) => void }) {
   if (!person) {
     return (
       <View style={[styles.badge, { width: size + 28 }]}>
@@ -282,14 +348,41 @@ function PersonBadge({ person, size }: { person: Q.FamilyPerson | null; size: nu
       </View>
     );
   }
-  return (
-    <View style={[styles.badge, { width: size + 34 }, person.is_deceased && { opacity: 0.55 }]} accessibilityLabel={`${person.name}${person.is_deceased ? ', passed away' : ''}`}>
-      <Avatar user={person} size={size} color={person.is_viewer ? colors.gold : undefined} />
+  // Someone alive who isn't on Qumanity yet can be linked to their real account.
+  const linkable = !!onLink && !person.claimed && !person.is_deceased;
+  const body = (
+    <>
+      <View style={linkable ? [styles.dashed, { borderRadius: (size + 8) / 2 }] : undefined}>
+        <Avatar user={person} size={size} color={person.is_viewer ? colors.gold : undefined} />
+      </View>
       <Text style={styles.badgeName} numberOfLines={2}>
         {person.is_deceased ? '✝ ' : ''}
         {person.name}
       </Text>
-      {person.is_viewer ? <Text style={styles.youTag}>You</Text> : !person.claimed && <Text style={styles.metaSmall}>not joined yet</Text>}
+      {person.is_viewer ? (
+        <Text style={styles.youTag}>You</Text>
+      ) : linkable ? (
+        <Text style={styles.linkTag}>Tap to link</Text>
+      ) : (
+        !person.claimed && <Text style={styles.metaSmall}>not joined yet</Text>
+      )}
+    </>
+  );
+  if (linkable) {
+    return (
+      <Pressable
+        onPress={() => onLink!(person)}
+        style={({ pressed }) => [styles.badge, { width: size + 34 }, pressed && { opacity: 0.7 }]}
+        accessibilityRole="button"
+        accessibilityLabel={`${person.name}, not on Qumanity yet. Tap to link to their account`}
+      >
+        {body}
+      </Pressable>
+    );
+  }
+  return (
+    <View style={[styles.badge, { width: size + 34 }, person.is_deceased && { opacity: 0.55 }]} accessibilityLabel={`${person.name}${person.is_deceased ? ', passed away' : ''}`}>
+      {body}
     </View>
   );
 }
@@ -347,6 +440,14 @@ const styles = StyleSheet.create({
   unitTop: { flexDirection: 'row', alignItems: 'center', gap: space.sm },
   unitName: { flex: 1, color: colors.text, fontFamily: fonts.medium, fontSize: 13 },
   actions: { flexDirection: 'row', gap: space.sm, marginTop: space.lg },
+  dashed: { padding: 3, borderWidth: 1.5, borderStyle: 'dashed', borderColor: colors.gold },
+  linkTag: { color: colors.gold, fontFamily: fonts.bold, fontSize: 10.5 },
+  backdrop: { flex: 1, backgroundColor: '#000a', justifyContent: 'flex-end' },
+  sheet: { backgroundColor: colors.ink, borderTopLeftRadius: 20, borderTopRightRadius: 20, padding: space.lg, paddingBottom: space.xl, gap: space.sm, borderTopWidth: StyleSheet.hairlineWidth, borderColor: colors.line },
+  sheetHead: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  sheetTitle: { flex: 1, color: colors.text, fontFamily: fonts.bold, fontSize: 17 },
+  close: { color: colors.gold, fontFamily: fonts.medium },
+  metaText: { color: colors.dim, fontFamily: fonts.body, fontSize: 13, lineHeight: 19 },
   leaveMsg: { fontFamily: fonts.medium, fontSize: 13, textAlign: 'center', marginTop: space.md },
   ok: { color: colors.earth, fontFamily: fonts.medium, fontSize: 13, textAlign: 'center' },
 });
