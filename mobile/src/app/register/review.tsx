@@ -25,7 +25,7 @@ import {
   Steps,
   Title,
 } from "@/components/ui";
-import { rememberedId } from "@/lib/remembered";
+import { rememberedId, rememberedPublicId } from "@/lib/remembered";
 import { useApp } from "@/state/app";
 import { colors, fonts, radius, space } from "@/theme";
 
@@ -57,12 +57,25 @@ export default function Review() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // "Referred By": pre-filled with the Public ID of the member last signed in on this phone
+  // (clearable). Only used when NOT registering someone else — then the helper is the referrer.
+  useEffect(() => {
+    if (draft.referredBy) return;
+    rememberedPublicId().then(
+      (code) => code && setDraft({ referredBy: code }),
+      () => undefined,
+    );
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  const referredDigits = draft.referredBy.replace(/\D/g, "");
+
   async function create() {
     setBusy(true);
     setError(undefined);
     try {
       const r = await register({
         name: draft.name,
+        middle_name: draft.middleName || undefined,
         gender: draft.gender as "male" | "female" | "both",
         dob: draft.dob,
         tob: draft.tob,
@@ -72,6 +85,9 @@ export default function Review() {
         phone: draft.phone || undefined,
         birth_location: toStruct(draft.birth),
         present_location: toStruct(draft.present),
+        ...(!helping && referredDigits.length === 12
+          ? { referred_by_public_id: referredDigits }
+          : {}),
         ...(helping
           ? {
               assisted: true,
@@ -194,6 +210,9 @@ export default function Review() {
 
   const rows: [string, string][] = [
     ["Name", draft.name],
+    ...(draft.middleName
+      ? ([["Middle name", draft.middleName]] as [string, string][])
+      : []),
     ["Gender", GENDER[draft.gender]],
     ["Born", `${draft.dob} at ${draft.tob}`],
     ["Mother tongue", draft.language],
@@ -220,7 +239,12 @@ export default function Review() {
           title={helping ? "Create their account" : "Create my account"}
           onPress={create}
           busy={busy}
-          disabled={!helperReady}
+          disabled={
+            !helperReady ||
+            (!helping &&
+              referredDigits.length > 0 &&
+              referredDigits.length !== 12)
+          }
         />
       }
     >
@@ -271,6 +295,29 @@ export default function Review() {
           />
           <Text style={styles.hint}>
             Only checked by the Qumanity website, never stored on this phone.
+          </Text>
+        </View>
+      )}
+
+      {!helping && (
+        <View style={styles.card}>
+          <Field
+            label="Referred By (Public ID, optional)"
+            value={referredDigits.replace(/(\d{4})(?=\d)/g, "$1 ")}
+            onChangeText={(t) =>
+              setDraft({ referredBy: t.replace(/\D/g, "").slice(0, 12) })
+            }
+            keyboardType="number-pad"
+            placeholder="1234 5678 9012"
+            error={
+              referredDigits.length > 0 && referredDigits.length !== 12
+                ? "A Public ID has 12 digits (or leave it empty)."
+                : undefined
+            }
+          />
+          <Text style={styles.hint}>
+            The member who told you about Qumanity. They receive a small
+            share of the registration Qoin. Leave it empty if nobody did.
           </Text>
         </View>
       )}

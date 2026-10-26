@@ -198,6 +198,47 @@ s, fm = call("GET", "/api/founder-message?lang=hi"); check("Founder's Message", 
 s, ck = call("GET", f"/api/karma/collective/village/{village['id']}"); check("collective Karma for a place", s == 200 and "points" in ck, ck)
 s, pc = call("GET", "/api/perception/country/O_AS_IND", reg.get("token")); check("perception: counts hidden or shown, reason given", s == 200 and (pc.get("results_visible") or pc.get("results_reason")), pc)
 
+# --- website sync 2026-10-26: profile pictures, middle name, referral by Public ID, Family Tree ---
+import io  # noqa: E402
+from PIL import Image  # noqa: E402
+dtok = reg.get("token")
+buf = io.BytesIO(); Image.new("RGB", (320, 240), "orange").save(buf, "PNG"); buf.seek(0)
+r = c.post("/api/profile/picture", headers={"Authorization": f"Bearer {dtok}"}, data={"picture": (buf, "me.png", "image/png")}, content_type="multipart/form-data")
+check("upload a profile picture (multipart 'picture', as the app sends it)", r.status_code == 200, (r.status_code, r.get_data(as_text=True)[:120]))
+s, me3 = call("GET", "/api/me", dtok); pic = me3.get("profile_picture_url")
+check("/api/me returns my own profile_picture_url", bool(pic) and pic.endswith("/profile-picture"), pic)
+r = c.get(pic, headers={"Authorization": f"Bearer {dtok}"}); check("…and it loads with the app's Bearer header (256px JPEG)", r.status_code == 200 and r.mimetype == "image/jpeg", r.status_code)
+r = c.get(pic, headers={"Authorization": f"Bearer {B_tok}"}); check("another member can see it (identity not hidden)", r.status_code == 200, r.status_code)
+s, nopic = call("GET", "/api/me", B_tok); check("no picture -> profile_picture_url is null", nopic.get("profile_picture_url") is None, nopic.get("profile_picture_url"))
+
+s, rr = call("POST", "/api/auth/register", body={"name": "Ravi Referred", "middle_name": "Kumar", "gender": "male", "dob": "1994-04-04", "tob": "10:10", "pin": "13579",
+    "language": "Hindi", "birth_location": present, "present_location": present, "client": "app", "referred_by_public_id": code_b})
+check("register with middle name + Referred By (Public ID)", s == 201 and rr.get("token"), (s, rr.get("error")))
+s, me4 = call("GET", "/api/me", rr.get("token")); check("middle name saved", me4.get("middle_name") == "Kumar", me4.get("middle_name"))
+row = __import__("sqlite3").connect(str(TMP / "copy.db")).execute("SELECT referred_by_user_id FROM users WHERE name='Ravi Referred'").fetchone()
+check("referrer recorded from the Public ID", row and row[0] == found["user_id"], row)
+s, rr2 = call("POST", "/api/auth/register", body={"name": "Sita Unknownref", "gender": "female", "dob": "1995-05-05", "tob": "11:11", "pin": "13579",
+    "language": "Hindi", "birth_location": present, "present_location": present, "client": "app", "referred_by_public_id": "000000000000"})
+check("an unknown Referred By is ignored, never an error", s == 201, (s, rr2.get("error")))
+
+s, fs = call("GET", "/api/family/status", B_tok); check("family status before activation: activated false", s == 200 and fs.get("activated") is False, fs)
+s, act = call("POST", "/api/family/activate", dtok, {"father": {"name": "Check Father", "action": "create"}, "mother": {"name": "Check Mother", "action": "create"}})
+fam = act.get("parents_group_id"); check("activate (as the website wizard does) -> a family unit", s == 201 and fam, (s, act))
+s, fs = call("GET", "/api/family/status", dtok); check("family status: activated, unit listed", fs.get("activated") is True and any(g["id"] == fam for g in fs.get("groups", [])), fs)
+s, nb = call("GET", f"/api/family/node/{fam}/neighborhood", dtok)
+check("neighborhood: unit + husband/wife + children + parent/child units", s == 200 and {"group_id", "husband", "wife", "unmarried_children", "parent_groups", "child_groups", "is_admin"} <= set(nb), (s, sorted(nb)))
+s, fm = call("GET", f"/api/family-groups/{fam}/members", dtok); m0 = (fm.get("members") or [{}])[0]
+check("members rows have name/gender/age_group/location/picture/role/you", s == 200 and {"user_id", "name", "gender", "age_group", "present_location", "profile_picture_url", "is_admin", "you"} <= set(m0), m0)
+s, nb_b = call("GET", f"/api/family/node/{fam}/neighborhood", B_tok); check("a non-member gets 404 (app shows 'Ask to join')", s == 404, s)
+s, inv = call("POST", f"/api/family-groups/{fam}/invite", B_tok, {"user_id": found["user_id"]}); check("a non-admin cannot invite", s in (403, 404), (s, inv))
+s, inv = call("POST", f"/api/family-groups/{fam}/invite", dtok, {"user_id": found["user_id"]}); check("admin invites by resolved user_id (after Public ID search)", s == 201, (s, inv))
+s, ib = call("GET", "/api/people/inbox", B_tok); fr = next((r for r in ib.get("requests", []) if r["kind"] == "family_group_invite"), None)
+check("invite arrives in the inbox with family_group_name + from_user_id", fr is not None and fr.get("family_group_name") and fr.get("from_user_id"), fr)
+s, _ = call("POST", f"/api/people/inbox/{fr['id']}/decide", B_tok, {"decision": "accept"}) if fr else (0, None)
+s, nb_b = call("GET", f"/api/family/node/{fam}/neighborhood", B_tok); check("after accepting, the member can open the unit", s == 200, s)
+s, gm = call("GET", f"/api/people/groups/{fam_a['id']}/messages", pinr["token"])
+check("personal group chat members carry the Members-list fields", s == 200 and {"gender", "age_group", "present_location", "is_admin"} <= set((gm.get("members") or [{}])[0]), (s, (gm.get("members") or [{}])[0]))
+
 # --- monthly sign election, pilot village (Rohini Sector 24): needs the 500 demo residents ---
 import datetime as dt, random  # noqa: E401
 import election_core as E  # noqa: E402

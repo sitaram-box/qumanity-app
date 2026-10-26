@@ -9,8 +9,9 @@ import { router, useFocusEffect } from 'expo-router';
 import { useCallback, useState } from 'react';
 import { ActivityIndicator, Alert, Pressable, StyleSheet, Text, View } from 'react-native';
 import * as Q from '@/api/qumanity';
+import { Avatar } from '@/components/Avatar';
 import { BackHeader, ErrorText, Screen } from '@/components/ui';
-import { colors, fonts, radius, space, timelineColors } from '@/theme';
+import { colors, fonts, radius, space } from '@/theme';
 
 export default function PrivateGroups() {
   const [chats, setChats] = useState<Q.PrivateChat[] | null>(null);
@@ -61,9 +62,7 @@ export default function PrivateGroups() {
               accessibilityRole="button"
               onPress={() => router.push({ pathname: '/chat/[kind]/[id]', params: { kind: 'private', id: String(c.chat_id) } })}
             >
-              <View style={[styles.icon, { backgroundColor: timelineColors.private + '22' }]}>
-                <Ionicons name="lock-closed" size={18} color={timelineColors.private} />
-              </View>
+              <Avatar user={{ name: c.with, gender: c.with_gender, profile_picture_url: c.with_profile_picture_url }} size={40} />
               <View style={{ flex: 1 }}>
                 <Text style={styles.rowTitle}>{c.name}</Text>
                 <Text style={styles.meta} numberOfLines={1}>

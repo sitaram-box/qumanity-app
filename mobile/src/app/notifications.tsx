@@ -5,6 +5,7 @@ import { router, useFocusEffect } from 'expo-router';
 import { useCallback, useState } from 'react';
 import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
 import * as Q from '@/api/qumanity';
+import { Avatar } from '@/components/Avatar';
 import { BackHeader, Chip, ErrorText, Screen } from '@/components/ui';
 import { colors, fonts, radius, space } from '@/theme';
 
@@ -53,9 +54,15 @@ export default function Notifications() {
             <View style={styles.section}>
               {requests.map((r) => (
                 <View key={r.id} style={styles.card}>
-                  <Text style={styles.cardTitle}>
-                    {r.from_name} {r.kind === 'group' ? `invites you to “${r.group_name}”` : 'sent you a message'}
-                  </Text>
+                  <View style={styles.cardHead}>
+                    <Avatar
+                      user={{ name: r.from_name, profile_picture_url: r.from_user_id ? Q.pictureUrlFor(r.from_user_id) : null }}
+                      size={36}
+                    />
+                    <Text style={[styles.cardTitle, { flex: 1 }]}>
+                      {r.from_name} {requestText(r)}
+                    </Text>
+                  </View>
                   {r.first_message && <Text style={styles.msg}>“{r.first_message}”</Text>}
                   {r.status === 'waiting' && <Text style={styles.meta}>On waiting</Text>}
                   <View style={styles.actions}>
@@ -105,7 +112,23 @@ export default function Notifications() {
   );
 }
 
+function requestText(r: Q.InboxItem): string {
+  switch (r.kind) {
+    case 'group':
+      return `invites you to “${r.group_name}”`;
+    case 'family_group_invite':
+      return `invites you to the family unit “${r.family_group_name ?? 'Family'}”`;
+    case 'family_group_join':
+      return `asks to join your family unit “${r.family_group_name ?? 'Family'}”`;
+    case 'rejoin':
+      return `asks to rejoin “${r.chat_name ?? 'your chat'}”`;
+    default:
+      return 'sent you a message';
+  }
+}
+
 const styles = StyleSheet.create({
+  cardHead: { flexDirection: 'row', alignItems: 'center', gap: space.sm },
   empty: { color: colors.dim, fontFamily: fonts.body, textAlign: 'center', marginTop: space.xxl },
   section: { marginBottom: space.md },
   card: { backgroundColor: colors.panel, borderRadius: radius.md, padding: space.lg, marginBottom: space.md },

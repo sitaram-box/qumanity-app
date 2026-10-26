@@ -13,12 +13,12 @@ import { colors, fonts, space } from '@/theme';
 
 export default function ProfileChange() {
   const { me } = useApp();
-  const [f, setF] = useState({ name: '', email: '', phone: '', dob: '', tob: '', reason: '' });
+  const [f, setF] = useState({ name: '', middle_name: '', email: '', phone: '', dob: '', tob: '', reason: '' });
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string>();
   const [done, setDone] = useState(false);
   const set = (k: keyof typeof f) => (v: string) => setF((x) => ({ ...x, [k]: v }));
-  const any = f.name || f.email || f.phone || f.dob || f.tob;
+  const any = f.name || f.middle_name || f.email || f.phone || f.dob || f.tob;
 
   async function send() {
     if (f.dob && !/^\d{4}-\d{2}-\d{2}$/.test(f.dob)) return setError('Date of birth as YYYY-MM-DD');
@@ -47,6 +47,7 @@ export default function ProfileChange() {
         <>
           <Lead>Fill in only what should change. Date and time of birth set your sign and IDs, so the council checks them first.</Lead>
           <Field label="Name" value={f.name} onChangeText={set('name')} placeholder={me?.name} maxLength={80} />
+          <Field label="Middle name" value={f.middle_name} onChangeText={set('middle_name')} placeholder={me?.middle_name || 'optional'} maxLength={60} />
           <Field label="Email" value={f.email} onChangeText={set('email')} placeholder={me?.email ?? ''} keyboardType="email-address" autoCapitalize="none" />
           <Field label="Phone" value={f.phone} onChangeText={set('phone')} placeholder={me?.phone ?? ''} keyboardType="phone-pad" />
           <Field label="Date of birth (YYYY-MM-DD)" value={f.dob} onChangeText={set('dob')} keyboardType="numbers-and-punctuation" />

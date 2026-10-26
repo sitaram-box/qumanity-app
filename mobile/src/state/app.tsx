@@ -7,11 +7,16 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useState, t
 import { currentServer, loadStoredSession, setServer as saveServer, setToken, setUnauthorizedHandler } from '@/api/client';
 import type { Place } from '@/api/locations';
 import * as Q from '@/api/qumanity';
+import { setRememberedPublicId } from '@/lib/remembered';
 
 export type Stage = 'loading' | 'signedOut' | 'ready';
 
 export interface Draft {
   name: string;
+  /** Optional; the website uses it for family naming (2026-10-20). */
+  middleName: string;
+  /** 12-digit Public ID of the referrer (pre-filled with this phone's remembered member). */
+  referredBy: string;
   gender: 'male' | 'female' | 'both' | '';
   dob: string;
   tob: string;
@@ -29,6 +34,8 @@ export interface Draft {
 
 export const emptyDraft: Draft = {
   name: '',
+  middleName: '',
+  referredBy: '',
   gender: '',
   dob: '',
   tob: '',
@@ -60,6 +67,16 @@ interface AppState {
 
 const Ctx = createContext<AppState | null>(null);
 
+/** Keep the signed-in member's Public ID on this phone for "Referred By" (best effort). */
+function rememberPublicId() {
+  Q.peopleMe().then(
+    (p) => {
+      if (p.search_code) setRememberedPublicId(p.search_code);
+    },
+    () => undefined,
+  );
+}
+
 export function AppProvider({ children }: { children: ReactNode }) {
   const [stage, setStage] = useState<Stage>('loading');
   const [server, setServerState] = useState(currentServer());
@@ -87,6 +104,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       if (!token) return setStage('signedOut');
       try {
         await loadMe();
+        rememberPublicId();
       } catch {
         setStage('signedOut'); // offline or token expired: sign in again
       }
@@ -109,6 +127,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         const { token } = await Q.login(privateId, pin);
         await setToken(token);
         await loadMe();
+        rememberPublicId();
       },
       acceptToken: async (token) => {
         await setToken(token);

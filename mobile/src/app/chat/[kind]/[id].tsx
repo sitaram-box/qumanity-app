@@ -1,7 +1,8 @@
 /**
  * One chat screen for all three kinds: a village sub-group ("sub"), a personal
  * group ("group") and a private one-to-one chat ("private"). Text only for now
- * (media needs file storage). Refreshes every few seconds while open.
+ * (media needs file storage). Refreshes every few seconds while open. Every sender has an
+ * avatar (picture or initials); group chats open the Members list from the header.
  */
 
 import { Ionicons } from '@expo/vector-icons';
@@ -10,13 +11,15 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, Alert, FlatList, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import * as Q from '@/api/qumanity';
+import { Avatar } from '@/components/Avatar';
+import { MembersSheet } from '@/components/MembersSheet';
 import { BackHeader, Button, ErrorText, Field } from '@/components/ui';
 import { colors, fonts, radius, space } from '@/theme';
 
 const POLL_MS = 4000;
 
-type GroupExtra = { category: Q.GroupCategory; is_owner: boolean; members: { name: string; you: boolean }[]; business: { name: string; sector: string; services: string } | null };
-type PrivateExtra = { name: string; with: string; left: boolean; other_left: boolean; other_account_id: string | null };
+type GroupExtra = { category: Q.GroupCategory; is_owner: boolean; members: Q.MemberRow[]; business: { name: string; sector: string; services: string } | null };
+type PrivateExtra = { name: string; with: string; with_gender?: Q.Gender | null; with_profile_picture_url?: string | null; left: boolean; other_left: boolean; other_account_id: string | null };
 
 export default function Chat() {
   const { kind, id } = useLocalSearchParams<{ kind: Q.ChatKind; id: string }>();
@@ -27,6 +30,7 @@ export default function Chat() {
   const [text, setText] = useState('');
   const [error, setError] = useState<string>();
   const [showInfo, setShowInfo] = useState(false);
+  const [showMembers, setShowMembers] = useState(false);
   const list = useRef<FlatList<Q.ChatMessage>>(null);
 
   const load = useCallback(async () => {
@@ -82,9 +86,20 @@ export default function Chat() {
             title={title || '…'}
             right={
               kind === 'group' || kind === 'private' ? (
-                <Pressable onPress={() => setShowInfo((v) => !v)} accessibilityRole="button" accessibilityLabel="Chat info">
-                  <Ionicons name="information-circle" size={26} color={colors.gold} />
-                </Pressable>
+                <View style={styles.headRight}>
+                  {kind === 'private' && privateExtra && (
+                    <Avatar user={{ name: privateExtra.with, gender: privateExtra.with_gender, profile_picture_url: privateExtra.with_profile_picture_url }} size={30} />
+                  )}
+                  {kind === 'group' && extra && (
+                    <Pressable onPress={() => setShowMembers(true)} accessibilityRole="button" accessibilityLabel={`Members, ${extra.members.length}`} style={styles.membersBtn}>
+                      <Ionicons name="people" size={16} color={colors.gold} />
+                      <Text style={styles.membersText}>{extra.members.length}</Text>
+                    </Pressable>
+                  )}
+                  <Pressable onPress={() => setShowInfo((v) => !v)} accessibilityRole="button" accessibilityLabel="Chat info">
+                    <Ionicons name="information-circle" size={26} color={colors.gold} />
+                  </Pressable>
+                </View>
               ) : null
             }
           />
@@ -112,10 +127,15 @@ export default function Chat() {
             onContentSizeChange={() => list.current?.scrollToEnd({ animated: false })}
             ListEmptyComponent={<Text style={styles.empty}>No messages yet. Say hello.</Text>}
             renderItem={({ item }) => (
-              <View style={[styles.bubble, item.mine ? styles.mine : styles.theirs]}>
-                {!item.mine && item.who && <Text style={styles.who}>{item.who}</Text>}
-                <Text style={[styles.text, item.mine && { color: colors.onAccent }]}>{item.text}</Text>
-                <Text style={[styles.at, item.mine && { color: '#1a0f0099' }]}>{shortTime(item.at)}</Text>
+              <View style={[styles.row, item.mine && { justifyContent: 'flex-end' }]}>
+                {!item.mine && kind !== 'private' && (
+                  <Avatar user={{ name: item.who ?? '', gender: item.gender, profile_picture_url: item.profile_picture_url }} size={30} />
+                )}
+                <View style={[styles.bubble, item.mine ? styles.mine : styles.theirs]}>
+                  {!item.mine && item.who && kind !== 'private' && <Text style={styles.who}>{item.who}</Text>}
+                  <Text style={[styles.text, item.mine && { color: colors.onAccent }]}>{item.text}</Text>
+                  <Text style={[styles.at, item.mine && { color: '#1a0f0099' }]}>{shortTime(item.at)}</Text>
+                </View>
               </View>
             )}
           />
@@ -139,6 +159,7 @@ export default function Chat() {
           </View>
         )}
       </View>
+      {kind === 'group' && extra && <MembersSheet visible={showMembers} onClose={() => setShowMembers(false)} title={`${title} · Members`} members={extra.members} />}
     </SafeAreaView>
   );
 }
@@ -210,7 +231,9 @@ function GroupInfo({ extra, editable, groupId, onSaved }: { extra: GroupExtra; e
 
   return (
     <View style={styles.info}>
-      <Text style={styles.who}>Members: {extra.members.map((m) => (m.you ? 'You' : m.name)).join(', ')}</Text>
+      <Text style={styles.who}>
+        {extra.members.length} {extra.members.length === 1 ? 'member' : 'members'} — tap the people icon above for the full list
+      </Text>
       {editable && extra.category === 'business' && (
         <>
           <Field label="Business name" value={name} onChangeText={setName} />
@@ -233,7 +256,11 @@ function shortTime(at: string) {
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.ink },
   empty: { color: colors.dim, fontFamily: fonts.body, textAlign: 'center', marginTop: space.xl },
-  bubble: { maxWidth: '82%', borderRadius: radius.lg, padding: space.md, marginBottom: space.sm },
+  row: { flexDirection: 'row', alignItems: 'flex-end', gap: 6, marginBottom: space.sm },
+  bubble: { maxWidth: '82%', borderRadius: radius.lg, padding: space.md },
+  headRight: { flexDirection: 'row', alignItems: 'center', gap: space.sm },
+  membersBtn: { flexDirection: 'row', alignItems: 'center', gap: 4, height: 28, paddingHorizontal: 9, borderRadius: 14, backgroundColor: colors.panelRaised },
+  membersText: { color: colors.text, fontFamily: fonts.bold, fontSize: 12.5 },
   mine: { alignSelf: 'flex-end', backgroundColor: colors.gold, borderBottomRightRadius: 4 },
   theirs: { alignSelf: 'flex-start', backgroundColor: colors.panel, borderBottomLeftRadius: 4 },
   who: { color: colors.saffron, fontFamily: fonts.bold, fontSize: 12, marginBottom: 2 },

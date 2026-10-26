@@ -35,7 +35,14 @@
           "backgroundColor": "#03050f"
         }
       ],
-      "expo-secure-store"
+      "expo-secure-store",
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Qumanity uses your photos only when you choose a profile picture.",
+          "cameraPermission": "Qumanity uses the camera only when you take a profile picture."
+        }
+      ]
     ],
     "scheme": "qumanity",
     "backgroundColor": "#03050f",

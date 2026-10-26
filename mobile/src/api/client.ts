@@ -38,11 +38,16 @@ export function guessServer(): string {
   return Platform.OS === 'android' ? `http://10.0.2.2:${WEBSITE_PORT}` : `http://localhost:${WEBSITE_PORT}`;
 }
 
-/** No stored/user-set server yet: production builds default to the live
- * website; development defaults to the Mac's LAN address (guessServer)
- * instead, since that's what's actually running during `expo start`. */
+/** Dev-only override from mobile/.env (EXPO_PUBLIC_API_BASE_URL=http://<Mac LAN IP>:5050). */
+const DEV_API_BASE = (process.env.EXPO_PUBLIC_API_BASE_URL ?? '').trim().replace(/\/+$/, '');
+
+/** No stored/user-set server yet: production builds always use the live
+ * website (a .env value can never change that); development uses
+ * EXPO_PUBLIC_API_BASE_URL when set, else the Mac's LAN address
+ * (guessServer), since that's what's actually running during `expo start`. */
 export function defaultServer(): string {
-  return __DEV__ ? guessServer() : PRODUCTION_SERVER;
+  if (!__DEV__) return PRODUCTION_SERVER;
+  return DEV_API_BASE || guessServer();
 }
 
 async function stored(key: string): Promise<string | null> {
@@ -93,6 +98,17 @@ export function setUnauthorizedHandler(fn: () => void) {
   onUnauthorized = fn;
 }
 
+/** The sign-in header for requests the app doesn't make through api(), e.g. <Image> sources:
+ * the website decides per viewer whether a profile picture may be shown. */
+export function authHeaders(): Record<string, string> {
+  return token ? { Authorization: `Bearer ${token}` } : {};
+}
+
+function unreachable(): ApiError {
+  const hint = __DEV__ ? ' Is the Mac on the same Wi-Fi and the website running?' : ' Check your internet connection.';
+  return new ApiError(`Cannot reach Qumanity at ${currentServer()}.${hint}`, 0);
+}
+
 export async function api<T>(path: string, options: { method?: 'GET' | 'POST'; body?: unknown; timeoutMs?: number } = {}): Promise<T> {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), options.timeoutMs ?? 20_000);
@@ -110,12 +126,40 @@ export async function api<T>(path: string, options: { method?: 'GET' | 'POST'; b
       credentials: 'omit',
     });
   } catch {
-    const hint = __DEV__ ? ' Is the Mac on the same Wi-Fi and the website running?' : ' Check your internet connection.';
-    throw new ApiError(`Cannot reach Qumanity at ${currentServer()}.${hint}`, 0);
+    throw unreachable();
   } finally {
     clearTimeout(timer);
   }
+  return handle<T>(res);
+}
 
+/** One file as multipart/form-data (the website reads request.files[field]). No Content-Type
+ * header on purpose: fetch sets it, with the multipart boundary. */
+export async function upload<T>(path: string, field: string, file: { uri: string; name: string; type: string }, timeoutMs = 60_000): Promise<T> {
+  const form = new FormData();
+  // React Native's FormData takes a {uri, name, type} file reference; the web build needs a Blob.
+  if (Platform.OS === 'web') form.append(field, await (await fetch(file.uri)).blob(), file.name);
+  else form.append(field, file as unknown as Blob);
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  let res: Response;
+  try {
+    res = await fetch(`${currentServer()}${path}`, {
+      method: 'POST',
+      headers: { Accept: 'application/json', ...authHeaders() },
+      body: form,
+      signal: controller.signal,
+      credentials: 'omit',
+    });
+  } catch {
+    throw unreachable();
+  } finally {
+    clearTimeout(timer);
+  }
+  return handle<T>(res);
+}
+
+async function handle<T>(res: Response): Promise<T> {
   const text = await res.text();
   let data: unknown = null;
   try {

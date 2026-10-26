@@ -22,6 +22,7 @@ const digits = (max: number) => (t: string) => t.replace(/\D/g, '').slice(0, max
 export default function PersonalDetails() {
   const { draft, setDraft } = useApp();
   const [name, setName] = useState(draft.name);
+  const [middleName, setMiddleName] = useState(draft.middleName);
   const [gender, setGender] = useState(draft.gender);
   const [day, setDay] = useState(draft.dob.slice(8, 10));
   const [month, setMonth] = useState(draft.dob.slice(5, 7));
@@ -66,7 +67,7 @@ export default function PersonalDetails() {
   function next() {
     setTouched(true);
     if (!valid) return;
-    setDraft({ name: name.trim(), gender, dob, tob, language, email: email.trim(), phone: phone.trim(), pin });
+    setDraft({ name: name.trim(), middleName: middleName.trim(), gender, dob, tob, language, email: email.trim(), phone: phone.trim(), pin });
     router.push('/register/global');
   }
 
@@ -77,6 +78,7 @@ export default function PersonalDetails() {
       <Lead>Your date of birth sets your sun sign, which decides your council voting group.</Lead>
 
       <Field label="Full name" value={name} onChangeText={setName} autoComplete="name" error={show('name')} />
+      <Field label="Middle name (optional)" value={middleName} onChangeText={setMiddleName} autoComplete="name-middle" maxLength={60} />
 
       <Label>Gender</Label>
       <View style={styles.wrap}>

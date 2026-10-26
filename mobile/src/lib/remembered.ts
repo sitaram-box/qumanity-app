@@ -31,3 +31,25 @@ export async function setRememberedId(value: string | null) {
     // best-effort only
   }
 }
+
+// The 12-digit Public ID (search code) of the member last signed in on this phone. Public by
+// design (it's the ID people share to be found), so keeping it is safe; it pre-fills "Referred By"
+// when someone registers on this phone (website referral engine, 2026-10-25).
+const PUBLIC_ID_KEY = 'qm_public_id';
+
+export async function rememberedPublicId(): Promise<string | null> {
+  try {
+    return Platform.OS === 'web' ? globalThis.localStorage?.getItem(PUBLIC_ID_KEY) ?? null : await SecureStore.getItemAsync(PUBLIC_ID_KEY);
+  } catch {
+    return null;
+  }
+}
+
+export async function setRememberedPublicId(value: string) {
+  try {
+    if (Platform.OS === 'web') globalThis.localStorage?.setItem(PUBLIC_ID_KEY, value);
+    else await SecureStore.setItemAsync(PUBLIC_ID_KEY, value);
+  } catch {
+    // best-effort only
+  }
+}

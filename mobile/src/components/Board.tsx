@@ -10,7 +10,8 @@ import { useCallback, useEffect, useState } from 'react';
 import { ActivityIndicator, Alert, FlatList, Pressable, RefreshControl, StyleSheet, Text, TextInput, View } from 'react-native';
 import * as Q from '@/api/qumanity';
 import { colors, fonts, radius, space, tint } from '@/theme';
-import { Avatar, ErrorText } from './ui';
+import { Avatar } from './Avatar';
+import { ErrorText } from './ui';
 
 const MAX_POST = 1000;
 
@@ -139,7 +140,11 @@ function PostCard({ post, onChanged }: { post: Q.BoardPost; onChanged: () => voi
   return (
     <View style={styles.post}>
       <View style={styles.postHead}>
-        <Avatar name={post.author} size={30} color={post.mine ? colors.gold : colors.saffron} />
+        <Avatar
+          user={{ name: post.author, gender: post.author_gender, profile_picture_url: post.author_profile_picture_url }}
+          size={34}
+          color={post.mine ? colors.gold : undefined}
+        />
         <View style={{ flex: 1 }}>
           <Text style={styles.author} numberOfLines={1}>
             {author}
@@ -187,10 +192,13 @@ function PostCard({ post, onChanged }: { post: Q.BoardPost; onChanged: () => voi
       {post.can_comment && (
         <View style={styles.comments}>
           {post.comments.map((c, i) => (
-            <Text key={i} style={styles.comment}>
-              <Text style={{ fontFamily: fonts.bold, color: colors.text }}>{c.who} </Text>
-              {c.text}
-            </Text>
+            <View key={i} style={styles.commentLine}>
+              <Avatar user={{ name: c.who, gender: c.gender, profile_picture_url: c.profile_picture_url }} size={22} />
+              <Text style={[styles.comment, { flex: 1 }]}>
+                <Text style={{ fontFamily: fonts.bold, color: colors.text }}>{c.who} </Text>
+                {c.text}
+              </Text>
+            </View>
           ))}
           <View style={styles.commentRow}>
             <TextInput
@@ -318,6 +326,7 @@ const styles = StyleSheet.create({
   },
   voteOn: { backgroundColor: colors.gold },
   voteText: { color: colors.text, fontFamily: fonts.bold, fontSize: 13.5 },
+  commentLine: { flexDirection: 'row', alignItems: 'flex-start', gap: 6 },
   comments: { marginTop: space.sm, paddingTop: space.sm, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.line },
   comment: { color: colors.dim, fontFamily: fonts.body, fontSize: 13, lineHeight: 18, marginBottom: 4 },
   commentRow: { flexDirection: 'row', alignItems: 'center', gap: space.sm, marginTop: 4 },

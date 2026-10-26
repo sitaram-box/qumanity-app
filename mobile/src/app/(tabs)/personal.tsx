@@ -10,6 +10,7 @@ import { router, useFocusEffect } from 'expo-router';
 import { useCallback, useState } from 'react';
 import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import * as Q from '@/api/qumanity';
+import { Avatar } from '@/components/Avatar';
 import { Button, Chip, ErrorText, Label, Screen, TabHeading } from '@/components/ui';
 import { colors, fonts, radius, space, timelineColors, tint } from '@/theme';
 import { BUCKETS, countFor, groupsInBucket } from '@/lib/groupBuckets';
@@ -77,6 +78,15 @@ export default function PersonalTimeline() {
           ))}
         </View>
       )}
+
+      <Pressable style={styles.treeBtn} accessibilityRole="button" accessibilityLabel="Open Family Tree" onPress={() => router.push('/family-tree')}>
+        <Ionicons name="git-network" size={20} color={timelineColors.personal} />
+        <View style={{ flex: 1 }}>
+          <Text style={styles.tileTitle}>Family Tree</Text>
+          <Text style={styles.treeSub}>Your family units, members and invitations</Text>
+        </View>
+        <Ionicons name="chevron-forward" size={18} color={colors.faint} />
+      </Pressable>
 
       <View style={styles.grid}>
         <Pressable style={[styles.tile, { borderColor: timelineColors.private }]} accessibilityRole="button" onPress={() => router.push('/private-groups')}>
@@ -157,8 +167,13 @@ function FindPerson({ owned }: { owned: Q.PersonalGroup[] }) {
       </View>
       {person && (
         <View style={styles.card}>
-          <Text style={styles.cardTitle}>{person.name}</Text>
-          {person.place && <Text style={styles.meta}>{person.place}</Text>}
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: space.md }}>
+            <Avatar user={person} size={44} />
+            <View style={{ flex: 1 }}>
+              <Text style={styles.cardTitle}>{person.name}</Text>
+              {person.place && <Text style={styles.meta}>{person.place}</Text>}
+            </View>
+          </View>
           <TextInput
             value={message}
             onChangeText={setMessage}
@@ -207,6 +222,8 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
   },
   tileIcon: { width: 34, height: 34, borderRadius: 10, alignItems: 'center', justifyContent: 'center' },
+  treeBtn: { flexDirection: 'row', alignItems: 'center', gap: space.md, padding: space.md, borderRadius: 14, backgroundColor: colors.panel, borderWidth: 1, borderColor: timelineColors.personal, marginBottom: space.md },
+  treeSub: { color: colors.dim, fontFamily: fonts.body, fontSize: 12, marginTop: 2 },
   tileTitle: { color: colors.text, fontFamily: fonts.bold, fontSize: 14, marginTop: space.sm },
   tileCount: { color: colors.faint, fontFamily: fonts.body, fontSize: 11.5, marginTop: 1 },
   searchRow: { flexDirection: 'row', gap: space.sm, alignItems: 'center', marginTop: space.sm },

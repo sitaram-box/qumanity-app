@@ -224,15 +224,8 @@ export function ListRow({
 }
 
 /** Initials in a tinted circle (people have no photos yet). */
-export function Avatar({ name, size = 32, color = colors.saffron }: { name: string; size?: number; color?: string }) {
-  const parts = name.trim().split(/\s+/);
-  const initials = ((parts[0]?.[0] ?? '') + (parts.length > 1 ? parts[parts.length - 1][0] : '')).toUpperCase();
-  return (
-    <View style={{ width: size, height: size, borderRadius: size / 2, backgroundColor: tint(color, '33'), alignItems: 'center', justifyContent: 'center' }}>
-      <Text style={{ color, fontFamily: fonts.bold, fontSize: size * 0.4 }}>{initials || '•'}</Text>
-    </View>
-  );
-}
+/** Moved to ./Avatar (pictures + gender badge); re-exported so existing imports keep working. */
+export { Avatar } from './Avatar';
 
 export function Steps({ at, of }: { at: number; of: number }) {
   return (

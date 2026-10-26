@@ -3,7 +3,7 @@
  * (app.py, board_core.py, social_core.py, wallet_core.py, qoin_core.py).
  */
 
-import { api } from './client';
+import { api, upload } from './client';
 
 // ---------- shared shapes ----------
 export type BoardLevel = 'village' | 'tehsil' | 'district' | 'state' | 'zone' | 'country' | 'continent' | 'earth';
@@ -46,6 +46,10 @@ export interface Me {
   birth_location_struct?: LocationStruct;
   /** Which of the member's own (up to 3) languages the UI should use -- set on website or app. */
   preferred_language?: string | null;
+  middle_name?: string;
+  /** "/api/users/<id>/profile-picture" or null (website 2026-10-26); updated_at busts the image cache. */
+  profile_picture_url?: string | null;
+  profile_picture_updated_at?: string;
   is_admin: boolean;
 }
 
@@ -68,6 +72,11 @@ export interface RegisterBody {
   assisted?: boolean;
   helper_private_id?: string;
   helper_pin?: string;
+  /** Optional, feeds the family naming logic (website 2026-10-20). */
+  middle_name?: string;
+  /** 12-digit Public ID of whoever referred them; blank/unknown is ignored, and an assisted
+   * registration's helper always wins over it (website 2026-10-25). */
+  referred_by_public_id?: string;
 }
 export interface RegisterResult {
   private_code: string;
@@ -101,6 +110,9 @@ export const zodiacPreview = (dob: string) =>
 export interface BoardPost {
   id: number;
   author: string;
+  author_id?: number;
+  author_gender?: Gender | null;
+  author_profile_picture_url?: string | null;
   mine: boolean;
   content: string;
   status: 'active' | 'frozen' | 'elevated' | 'removed';
@@ -112,7 +124,7 @@ export interface BoardPost {
   window_days: number;
   origin: { level: string; score: number } | null;
   elevated_to: string | null;
-  comments: { who: string; text: string; at: string }[];
+  comments: { who: string; text: string; at: string; user_id?: number; gender?: Gender | null; profile_picture_url?: string | null }[];
   can_vote: boolean;
   can_comment: boolean;
 }
@@ -212,6 +224,9 @@ export const decideSubgroup = (id: number, user_id: number, approve: boolean) =>
 // ---------- chats (village sub-groups, personal groups, private one-to-one) ----------
 export interface ChatMessage {
   who?: string;
+  user_id?: number;
+  gender?: Gender | null;
+  profile_picture_url?: string | null;
   mine: boolean;
   text: string;
   at: string;
@@ -223,12 +238,12 @@ export async function chatLoad(kind: ChatKind, id: number): Promise<{ title: str
     return { title: r.name, messages: r.messages };
   }
   if (kind === 'group') {
-    const r = await api<{ name: string; messages: ChatMessage[]; members: { name: string; you: boolean }[]; is_owner: boolean }>(
+    const r = await api<{ name: string; messages: ChatMessage[]; members: MemberRow[]; is_owner: boolean }>(
       `/api/people/groups/${id}/messages`,
     );
     return { title: r.name, messages: r.messages, extra: r };
   }
-  const r = await api<{ name: string; with: string; left: boolean; other_left: boolean; other_account_id: string | null; messages: ChatMessage[] }>(
+  const r = await api<{ name: string; with: string; with_gender?: Gender | null; with_profile_picture_url?: string | null; left: boolean; other_left: boolean; other_account_id: string | null; messages: ChatMessage[] }>(
     `/api/people/chats/${id}`,
   );
   return { title: r.name, messages: r.messages, extra: r };
@@ -321,12 +336,22 @@ export const saveBusiness = (groupId: number, b: { name: string; sector: string;
   api<{ status: string }>(`/api/people/groups/${groupId}/business`, { body: b });
 /** Find someone by their 12-digit search code. (The website also returns the readable Account ID; the app never shows it.) */
 export const searchPerson = (q: string) =>
-  api<{ user_id: number; name: string; gender: string; place: string | null }>(`/api/people/search?q=${encodeURIComponent(q)}`);
+  api<FoundPerson>(`/api/people/search?q=${encodeURIComponent(q)}`);
 export const invite = (group_id: number, user_id: number) => api<{ status: string }>('/api/people/invite', { body: { group_id, user_id } });
 export const messageRequest = (user_id: number, text: string) => api<{ status: string }>('/api/people/message', { body: { user_id, text } });
+export interface FoundPerson {
+  user_id: number;
+  name: string;
+  gender: Gender;
+  place: string | null;
+  account_id?: string;
+  profile_picture_url?: string | null;
+}
 export interface InboxItem {
   id: number;
-  kind: 'message' | 'group' | 'rejoin';
+  kind: 'message' | 'group' | 'rejoin' | 'family_group_join' | 'family_group_invite';
+  from_user_id?: number;
+  family_group_name?: string | null;
   first_message: string | null;
   created_at: string;
   status: 'pending' | 'waiting';
@@ -456,6 +481,8 @@ export interface PrivateChat {
   chat_id: number;
   name: string;
   with: string;
+  with_gender?: Gender | null;
+  with_profile_picture_url?: string | null;
   left: boolean;
   last: string | null;
   at: string | null;
@@ -557,7 +584,7 @@ export const referrerMe = () => api<{ code: { code: string; uses: number } | nul
 export const referrerApply = (note: string) => api<{ status: string }>('/api/referrer/apply', { body: { note } });
 
 /** Name/email/phone changes, and DOB/time/places which only a council can approve. */
-export const requestProfileChange = (fields: { name?: string; email?: string; phone?: string; dob?: string; tob?: string; reason: string }) =>
+export const requestProfileChange = (fields: { name?: string; middle_name?: string; email?: string; phone?: string; dob?: string; tob?: string; reason: string }) =>
   api<{ status?: string; message?: string }>('/api/dashboard/edit-request', { body: fields });
 
 // ---------- website parity (2026-10-06) ----------
@@ -582,3 +609,68 @@ export interface MoonKundali {
 export const myKundali = () => api<MoonKundali>('/api/me/kundali');
 export const setPreferredLanguage = (preferred: string) =>
   api<{ languages: Language[]; preferred: string | null }>('/api/user/languages', { body: { preferred } });
+
+// ---------- website sync 2026-10-26: profile pictures, member lists, Family Tree ----------
+export type Gender = 'male' | 'female' | 'both';
+
+/** Picture URL for a user id when the response didn't include one (e.g. inbox rows). The website
+ * answers 404 when there is no picture or the viewer may not see it; Avatar then shows initials. */
+export const pictureUrlFor = (userId: number) => `/api/users/${userId}/profile-picture`;
+
+/** Self-service and immediate (no council approval). png/jpg/webp, max 3 MB; the website
+ * re-encodes to a 256px square JPEG and strips EXIF (incl. GPS). Multipart field "picture". */
+export const uploadProfilePicture = (file: { uri: string; name: string; type: string }) =>
+  upload<{ status: 'ok' }>('/api/profile/picture', 'picture', file);
+
+/** One row of a group's Members list (social_core.member_display_row) — personal group chats
+ * and Family units alike. Name/location are already masked for a hidden identity. */
+export interface MemberRow {
+  user_id: number;
+  name: string;
+  gender: Gender | null;
+  age_group: string;
+  present_location: string | null;
+  profile_picture_url: string | null;
+  is_admin: boolean;
+  you: boolean;
+}
+
+export interface FamilyPerson {
+  id: number; // family_nodes.id
+  name: string;
+  gender: Gender | null;
+  status: string;
+  claimed: boolean;
+  is_deceased: boolean;
+  is_viewer: boolean;
+  profile_picture_url: string | null;
+}
+export interface FamilyUnitBrief {
+  group_id: number;
+  name: string;
+  husband: FamilyPerson | null;
+  wife: FamilyPerson | null;
+  is_dormant: boolean;
+  /** On parent units: which founder's birth unit this is. */
+  side?: 'husband' | 'wife';
+}
+export interface FamilyNeighborhood extends FamilyUnitBrief {
+  is_admin: boolean;
+  members: number;
+  unmarried_children: FamilyPerson[];
+  parent_groups: FamilyUnitBrief[];
+  child_groups: FamilyUnitBrief[];
+}
+export interface FamilyStatus {
+  activated: boolean;
+  groups: { id: number; name: string; kind?: string; is_admin: number | boolean; is_founder: boolean; members: number }[];
+}
+export const familyStatus = () => api<FamilyStatus>('/api/family/status');
+/** Despite "node" in the path, the id is a family unit (family_groups.id). 404 = not a member. */
+export const familyNeighborhood = (groupId: number) => api<FamilyNeighborhood>(`/api/family/node/${groupId}/neighborhood`);
+export const familyMembers = (groupId: number) => api<{ members: MemberRow[] }>(`/api/family-groups/${groupId}/members`);
+/** Takes a RESOLVED user_id — look the Public ID up with searchPerson first (website HANDOVER §4.15). */
+export const familyInvite = (groupId: number, user_id: number) =>
+  api<{ status: 'invited' }>(`/api/family-groups/${groupId}/invite`, { body: { user_id } });
+export const familyJoinRequest = (groupId: number) => api<{ status: 'requested' }>(`/api/family-groups/${groupId}/join-request`, { body: {} });
+export const familyLeave = (groupId: number) => api<{ status: 'left' }>(`/api/family-groups/${groupId}/leave`, { body: {} });
