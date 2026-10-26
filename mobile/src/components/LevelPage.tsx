@@ -42,7 +42,7 @@ export function LevelPage({ accent, levels }: { title?: string; note?: string; a
   const available = useMemo(() => levels.filter((l) => placeIdAt(struct, l)), [levels, struct]);
   const [level, setLevel] = useState<Q.BoardLevel>(available[0] ?? levels[0]);
   const [wallet, setWallet] = useState<number | null>(null);
-  const [members, setMembers] = useState<number | null>(null);
+  const [members, setMembers] = useState<number | string | null>(null);
   const [karma, setKarma] = useState<number | null>(null);
   // Only the paid-posting Composer needs a currency value (post prices are paid in Qoins, shown with their rupee reference);
   // the group wallet itself never shows currency, only members + Qoins (docs/qoins_wallet_system.md).
@@ -62,8 +62,9 @@ export function LevelPage({ accent, levels }: { title?: string; note?: string; a
     setKarma(null);
     if (!placeId) return;
     Q.collectiveKarma(level, placeId).then((k) => setKarma(k.points), () => undefined);
-    Q.groupWallet(level, placeId).then((w) => setWallet(w.balance_qoins), () => undefined);
-    Q.placeStats(level, placeId).then((s) => setMembers(s.total_humans), () => undefined);
+    // The public figure for everyone: how many Qoins the place holds (never its rupee value).
+    Q.groupWallet(level, placeId).then((w) => setWallet(w.qoin_count ?? null), () => undefined);
+    Q.placeStats(level, placeId).then((s) => setMembers(s.total_humans ?? null), () => undefined);
   }, [level, placeId]);
 
   return (
@@ -126,12 +127,12 @@ export function LevelPage({ accent, levels }: { title?: string; note?: string; a
   );
 }
 
-function Stat({ icon, qoin, value, label }: { icon?: React.ComponentProps<typeof Ionicons>['name']; qoin?: boolean; value: number | null; label: string }) {
+function Stat({ icon, qoin, value, label }: { icon?: React.ComponentProps<typeof Ionicons>['name']; qoin?: boolean; value: number | string | null | undefined; label: string }) {
   return (
     <View style={styles.stat} accessibilityLabel={`${value ?? 'loading'} ${label}`}>
       <View style={styles.statTop}>
         {qoin ? <Text style={styles.qoin}>💠</Text> : <Ionicons name={icon!} size={13} color={colors.dim} />}
-        <Text style={styles.statValue}>{value === null ? '…' : value.toLocaleString()}</Text>
+        <Text style={styles.statValue}>{value == null ? '…' : typeof value === 'number' ? value.toLocaleString() : value}</Text>
       </View>
       <Text style={styles.statLabel}>{label}</Text>
     </View>

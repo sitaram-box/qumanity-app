@@ -8,7 +8,7 @@
 import { Ionicons } from '@expo/vector-icons';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useRef, useState } from 'react';
-import { FlatList, Pressable, StyleSheet, Text, useWindowDimensions, View, type ViewToken } from 'react-native';
+import { FlatList, Pressable, StyleSheet, Text, useWindowDimensions, View, type ListViewToken } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import * as Q from '@/api/qumanity';
 import { Button, Logo } from '@/components/ui';
@@ -137,7 +137,7 @@ export default function Tour() {
   const list = useRef<FlatList<Slide>>(null);
   const last = index === SLIDES.length - 1;
 
-  const onViewable = useRef(({ viewableItems }: { viewableItems: ViewToken[] }) => {
+  const onViewable = useRef(({ viewableItems }: { viewableItems: ListViewToken[] }) => {
     if (viewableItems[0]?.index != null) setIndex(viewableItems[0].index);
   }).current;
 

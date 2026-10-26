@@ -156,7 +156,7 @@ function AboutStats() {
           Promise.all(
             Q.SUBCONTINENT_COUNTRIES.map((c) =>
               Q.placeStats('country', c.id)
-                .then((s) => [c.id, s.total_humans] as const)
+                .then((s) => [c.id, typeof s.total_humans === 'number' ? s.total_humans : 0] as const)
                 .catch(() => [c.id, 0] as const),
             ),
           ),

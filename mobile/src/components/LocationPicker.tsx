@@ -105,7 +105,7 @@ export function LocationPicker({
               keyExtractor={(l) => `${l.tier}:${l.id}`}
               keyboardShouldPersistTaps="handled"
               initialNumToRender={30}
-              ListEmptyComponent={options?.length ? <Text style={styles.empty}>No matches.</Text> : null}
+              ListEmptyComponent={options?.length ? <Text style={styles.empty}>No matches.</Text> : undefined}
               renderItem={({ item }) => (
                 <Pressable
                   accessibilityRole="button"

@@ -24,7 +24,7 @@ export function CodeInput({
   accessibilityLabel: string;
   otp?: boolean;
 }) {
-  const ref = useRef<TextInput>(null);
+  const ref = useRef<React.ComponentRef<typeof TextInput>>(null);
   return (
     <Pressable onPress={() => ref.current?.focus()} style={styles.row} accessibilityLabel={accessibilityLabel}>
       {Array.from({ length }, (_, i) => {

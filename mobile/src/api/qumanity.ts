@@ -385,8 +385,10 @@ export const walletBalance = () =>
     '/api/wallet/balance',
   );
 /** A location group's wallet; Earth's id is "EARTH" (website convention). */
+/** qoin_count (how many Qoins the place holds) is public; balance_qoins (the rupee value) is sent
+ * only to an admin or that place's serving council (website _can_see_collective_wallet_value). */
 export const groupWallet = (level: BoardLevel, id: string) =>
-  api<{ balance_qoins: number }>(`/api/wallet/balance/${level}/${encodeURIComponent(id)}`);
+  api<{ qoin_count: number; balance_qoins?: number }>(`/api/wallet/balance/${level}/${encodeURIComponent(id)}`);
 export interface WalletWeek {
   year: number;
   week: number;
@@ -422,7 +424,8 @@ export const setDailyLanguage = (daily: string) => api<{ languages: Language[] }
 
 // ---------- statistics (location explorer) ----------
 export interface PlaceStats {
-  total_humans: number;
+  /** A count of 1-4 arrives as the string "<5" (website small-count suppression). */
+  total_humans: number | string;
   elements: Record<string, number>;
   gender: Record<string, number>;
   signs: Record<string, number>;
