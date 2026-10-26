@@ -685,9 +685,15 @@ export interface FamilyNeighborhood extends FamilyUnitBrief {
 }
 export interface FamilyStatus {
   activated: boolean;
+  /** Not activated, but a relative already placed them in a tree with parents (website 2026-10-26):
+   * call familyActivateLinked() — no wizard needed. */
+  linked_into_tree?: boolean;
   groups: { id: number; name: string; kind?: string; is_admin: number | boolean; is_founder: boolean; members: number }[];
 }
 export const familyStatus = () => api<FamilyStatus>('/api/family/status');
+/** For a linked_into_tree member: records the activation and returns their units (already_activated). */
+export const familyActivateLinked = () =>
+  api<{ already_activated: true; groups: FamilyStatus['groups'] }>('/api/family/activate', { body: {} });
 /** Despite "node" in the path, the id is a family unit (family_groups.id). 404 = not a member. */
 export const familyNeighborhood = (groupId: number) => api<FamilyNeighborhood>(`/api/family/node/${groupId}/neighborhood`);
 export const familyMembers = (groupId: number) => api<{ members: MemberRow[] }>(`/api/family-groups/${groupId}/members`);

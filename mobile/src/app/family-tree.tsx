@@ -5,7 +5,9 @@
  * join. Members + "Add by Public ID" (admins) per unit.
  *
  * Until a member has activated, this screen offers "Build your Family Tree", which opens the
- * in-app 6-step Activation wizard (app/family-activate.tsx, mirroring the website's).
+ * in-app 6-step Activation wizard (app/family-activate.tsx, mirroring the website's). A member a
+ * relative already placed in a tree with parents (linked by Public ID) skips the wizard: the screen
+ * completes their activation itself and shows the tree they were linked into.
  *
  * Membership rules are the website's (2026-10-26): you can leave an in-laws' unit any time, but not
  * your own unit (you founded it) or your birth unit while unmarried / while your parents or children
@@ -71,14 +73,20 @@ export default function FamilyTree() {
 
   useFocusEffect(
     useCallback(() => {
-      Q.familyStatus().then(
-        (s) => {
+      (async () => {
+        try {
+          let s = await Q.familyStatus();
+          if (!s.activated && s.linked_into_tree) {
+            await Q.familyActivateLinked(); // already in a tree with parents: no wizard
+            s = await Q.familyStatus();
+          }
           setStatus(s);
           const mine = s.groups.find((g) => g.is_founder) ?? s.groups[0];
           if (mine && !unit) open(mine.id, mine.name, 'reset');
-        },
-        (e) => setError((e as Error).message),
-      );
+        } catch (e) {
+          setError((e as Error).message);
+        }
+      })();
       // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []),
   );
