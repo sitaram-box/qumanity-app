@@ -14,7 +14,9 @@
  * are active there — the website says why, and the app shows that message as-is. Admins can remove
  * members (not founders). Anyone who left or was removed needs an admin's invite to come back.
  *
- * Chat opens the unit's own group chat (chat/family/<id>). Any person in the tree who isn't on
+ * Chat opens the unit's own group chat (chat/family/<id>) — from the Chat button, or the chat icon
+ * on this unit's card and on any neighbouring unit you're a member of (tapping the card itself
+ * still moves through the tree). Any person in the tree who isn't on
  * Qumanity yet ("not joined yet") can be tapped to link them to their real account by Public ID —
  * the website lets an admin of a unit that person belongs to do this, and explains otherwise.
  */
@@ -135,6 +137,10 @@ export default function FamilyTree() {
     ]);
   }
 
+  // Units you are an approved member of: only these can be chatted in (others answer 404).
+  const memberOf = new Set(status?.groups.map((g) => g.id) ?? []);
+  const openChat = (groupId: number) => router.push({ pathname: '/chat/[kind]/[id]', params: { kind: 'family', id: String(groupId) } });
+
   function startLink(p: Q.FamilyPerson) {
     setLinkFor(p);
     setLinkCode('');
@@ -246,7 +252,13 @@ export default function FamilyTree() {
               <SectionTitle>Parents</SectionTitle>
               <View style={styles.parentRow}>
                 {unit.parent_groups.map((p) => (
-                  <UnitCard key={p.group_id} unit={p} label={p.side === 'wife' ? "Wife's side" : "Husband's side"} onPress={() => open(p.group_id, p.name)} />
+                  <UnitCard
+                    key={p.group_id}
+                    unit={p}
+                    label={p.side === 'wife' ? "Wife's side" : "Husband's side"}
+                    onPress={() => open(p.group_id, p.name)}
+                    onChat={memberOf.has(p.group_id) ? () => openChat(p.group_id) : undefined}
+                  />
                 ))}
               </View>
               <View style={styles.connector} />
@@ -254,7 +266,10 @@ export default function FamilyTree() {
           )}
 
           <View style={[styles.core, unit.is_dormant && { opacity: 0.55 }]}>
-            <Text style={styles.coreLabel}>THIS FAMILY UNIT</Text>
+            <View style={styles.coreHead}>
+              <Text style={styles.coreLabel}>THIS FAMILY UNIT</Text>
+              <ChatIcon name={unit.name} onPress={() => openChat(unit.group_id)} />
+            </View>
             <View style={styles.couple}>
               <PersonBadge person={unit.husband} size={58} onLink={startLink} />
               <Ionicons name="heart" size={18} color={colors.fire} style={{ marginTop: 18 }} />
@@ -279,7 +294,7 @@ export default function FamilyTree() {
                 </View>
               )}
               {unit.child_groups.map((c) => (
-                <UnitCard key={c.group_id} unit={c} wide onPress={() => open(c.group_id, c.name)} />
+                <UnitCard key={c.group_id} unit={c} wide onPress={() => open(c.group_id, c.name)} onChat={memberOf.has(c.group_id) ? () => openChat(c.group_id) : undefined} />
               ))}
             </>
           )}
@@ -288,7 +303,7 @@ export default function FamilyTree() {
             <Button
               title="Chat"
               icon="chatbubbles"
-              onPress={() => router.push({ pathname: '/chat/[kind]/[id]', params: { kind: 'family', id: String(unit.group_id) } })}
+              onPress={() => openChat(unit.group_id)}
               style={{ flex: 1 }}
             />
             <Button title="Members" icon="people" variant="soft" onPress={() => showMembersOf(unit.group_id)} style={{ flex: 1 }} />
@@ -308,7 +323,7 @@ export default function FamilyTree() {
               </Pressable>
             </View>
             <Text style={styles.metaText}>
-              If {linkFor?.name} is already on Qumanity, enter their Public ID. Check the card, then link: they appear as themselves in this tree.
+              If {linkFor?.name} is already on Qumanity, type their 12-digit Public ID. Check the card that appears, then tap Link: they appear as themselves in this tree.
             </Text>
             <PublicIdLookup
               code={linkCode}
@@ -318,9 +333,9 @@ export default function FamilyTree() {
               }}
               found={linkFound}
               onFound={setLinkFound}
+              action={<Button title="Link" icon="link" size="sm" onPress={link} busy={linkBusy} />}
             />
             <ErrorText>{linkErr}</ErrorText>
-            <Button title="Link" icon="link" onPress={link} busy={linkBusy} disabled={!linkFound} />
           </View>
         </View>
       </Modal>
@@ -395,7 +410,16 @@ function PersonBadge({ person, size, onLink }: { person: Q.FamilyPerson | null; 
   );
 }
 
-function UnitCard({ unit, label, wide, onPress }: { unit: Q.FamilyUnitBrief; label?: string; wide?: boolean; onPress: () => void }) {
+/** Small chat shortcut on a unit card; its own tap target, so the card's tap still navigates. */
+function ChatIcon({ name, onPress }: { name: string; onPress: () => void }) {
+  return (
+    <Pressable onPress={onPress} hitSlop={8} style={styles.chatIcon} accessibilityRole="button" accessibilityLabel={`Chat with ${name}`}>
+      <Ionicons name="chatbubbles" size={15} color={colors.gold} />
+    </Pressable>
+  );
+}
+
+function UnitCard({ unit, label, wide, onPress, onChat }: { unit: Q.FamilyUnitBrief; label?: string; wide?: boolean; onPress: () => void; onChat?: () => void }) {
   return (
     <Pressable
       onPress={onPress}
@@ -416,6 +440,7 @@ function UnitCard({ unit, label, wide, onPress }: { unit: Q.FamilyUnitBrief; lab
         <Text style={styles.unitName} numberOfLines={2}>
           {unit.name}
         </Text>
+        {onChat && <ChatIcon name={unit.name} onPress={onChat} />}
         <Ionicons name="chevron-forward" size={16} color={colors.faint} />
       </View>
     </Pressable>
@@ -434,6 +459,8 @@ const styles = StyleSheet.create({
   parentRow: { flexDirection: 'row', gap: space.sm },
   connector: { alignSelf: 'center', width: 2, height: 18, backgroundColor: colors.line, marginVertical: 2 },
   core: { alignItems: 'center', padding: space.md, borderRadius: radius.lg, borderWidth: 1.5, borderColor: ACCENT, backgroundColor: tint(ACCENT, '14'), gap: space.sm },
+  coreHead: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', alignSelf: 'stretch' },
+  chatIcon: { width: 30, height: 30, borderRadius: 15, backgroundColor: colors.panelRaised, alignItems: 'center', justifyContent: 'center' },
   coreLabel: { color: ACCENT, fontFamily: fonts.bold, fontSize: 10.5, letterSpacing: 0.8 },
   couple: { flexDirection: 'row', alignItems: 'flex-start', gap: space.md },
   childRow: { flexDirection: 'row', flexWrap: 'wrap', gap: space.sm },

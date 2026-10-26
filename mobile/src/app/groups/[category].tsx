@@ -17,7 +17,7 @@ import { colors, fonts, radius, space } from '@/theme';
 
 export default function GroupBucketList() {
   const { category } = useLocalSearchParams<{ category: Bucket }>();
-  const bucket = BUCKETS.some((b) => b.key === category) ? category : 'family';
+  const bucket = BUCKETS.some((b) => b.key === category) ? category : 'friends';
   const meta = BUCKETS.find((b) => b.key === bucket)!;
 
   const [groups, setGroups] = useState<Q.PersonalGroups | null>(null);

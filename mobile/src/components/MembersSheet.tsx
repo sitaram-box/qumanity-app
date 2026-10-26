@@ -1,6 +1,6 @@
 /**
  * A group's Members list (website social_core.member_display_row): avatar, name, gender, age
- * group, location, Admin/Member, "You" — admins first. Used by personal group chats and by
+ * group, location, Founder/Admin/Member, "You" — founders first, then admins. Used by personal group chats and by
  * Family units. Rows for a hidden identity arrive already masked by the website.
  * Pass `onRemove` (Family units, when you are an admin) to show a Remove button per member; the
  * website refuses founders and explains any other refusal, which is shown under that member.
@@ -13,6 +13,10 @@ import { colors, fonts, radius, space, tint } from '@/theme';
 import { Avatar } from './Avatar';
 
 const GENDER_LABEL: Record<string, string> = { male: 'Male', female: 'Female', both: 'Third gender' };
+const ROLE_LABEL = { founder: 'Founder', admin: 'Admin', member: 'Member' } as const;
+const ROLE_ORDER = { founder: 0, admin: 1, member: 2 } as const;
+/** The website's `role`; an older website without it falls back to is_admin. */
+const roleOf = (m: MemberRow) => m.role ?? (m.is_admin ? 'admin' : 'member');
 
 export function MembersSheet({
   visible,
@@ -66,7 +70,7 @@ export function MembersSheet({
     ]);
   }
 
-  const sorted = [...(list ?? [])].sort((a, b) => Number(b.is_admin) - Number(a.is_admin) || a.name.localeCompare(b.name));
+  const sorted = [...(list ?? [])].sort((a, b) => ROLE_ORDER[roleOf(a)] - ROLE_ORDER[roleOf(b)] || a.name.localeCompare(b.name));
   return (
     <Modal visible={visible} animationType="slide" transparent onRequestClose={onClose}>
       <View style={styles.backdrop}>
@@ -85,7 +89,7 @@ export function MembersSheet({
             {list === null && <Text style={styles.meta}>Loading…</Text>}
             {sorted.map((m) => (
               <Fragment key={m.user_id}>
-              <View style={styles.row} accessibilityLabel={`${m.name}, ${m.is_admin ? 'Admin' : 'Member'}`}>
+              <View style={styles.row} accessibilityLabel={`${m.name}, ${ROLE_LABEL[roleOf(m)]}`}>
                 <Avatar user={m} size={42} />
                 <View style={{ flex: 1 }}>
                   <Text style={styles.name} numberOfLines={1}>
@@ -96,10 +100,11 @@ export function MembersSheet({
                     {[m.gender ? GENDER_LABEL[m.gender] ?? m.gender : null, m.age_group, m.present_location].filter(Boolean).join(' · ')}
                   </Text>
                 </View>
-                <View style={[styles.role, m.is_admin && { backgroundColor: tint(colors.gold) }]}>
-                  <Text style={[styles.roleText, m.is_admin && { color: colors.gold }]}>{m.is_admin ? 'Admin' : 'Member'}</Text>
+                <View style={[styles.role, roleOf(m) !== 'member' && { backgroundColor: tint(colors.gold) }]}>
+                  <Text style={[styles.roleText, roleOf(m) !== 'member' && { color: colors.gold }]}>{ROLE_LABEL[roleOf(m)]}</Text>
                 </View>
-                {onRemove && !m.you && !m.is_admin && (
+                {/* The website refuses to remove a founder; anyone else (admin or member) can be removed. */}
+                {onRemove && !m.you && roleOf(m) !== 'founder' && (
                   <Pressable
                     onPress={() => confirmRemove(m)}
                     disabled={busy !== null}

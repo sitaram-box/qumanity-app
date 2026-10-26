@@ -122,19 +122,41 @@ export default function PersonalTimeline() {
   );
 }
 
+/**
+ * Find & connect (website 2026-10-27): by name or 12-digit Public ID. A name finds the single
+ * closest match (a private member is never found by name unless you're their family). If you
+ * already share a group, "Open chat" starts the private chat at once; otherwise send a one-time
+ * message request.
+ */
 function FindPerson({ owned }: { owned: Q.PersonalGroup[] }) {
-  const [code, setCode] = useState('');
+  const [query, setQuery] = useState('');
   const [person, setPerson] = useState<Awaited<ReturnType<typeof Q.searchPerson>> | null>(null);
   const [message, setMessage] = useState('');
   const [status, setStatus] = useState<string>();
   const [error, setError] = useState<string>();
 
+  // Digits (spaces allowed) are a Public ID and need all 12; anything else is a name.
+  const isId = /^[\d\s]+$/.test(query.trim());
+  const term = isId ? query.replace(/\D/g, '') : query.trim();
+  const ready = isId ? term.length === 12 : term.length >= 2;
+
   async function find() {
+    if (!ready) return;
     setError(undefined);
     setStatus(undefined);
     setPerson(null);
     try {
-      setPerson(await Q.searchPerson(code.replace(/\D/g, '')));
+      setPerson(await Q.searchPerson(term));
+    } catch (e) {
+      setError((e as Error).message);
+    }
+  }
+
+  async function openChat(userId: number) {
+    setError(undefined);
+    try {
+      const { chat_id } = await Q.openChatWith(userId);
+      router.push({ pathname: '/chat/[kind]/[id]', params: { kind: 'private', id: String(chat_id) } });
     } catch (e) {
       setError((e as Error).message);
     }
@@ -152,32 +174,41 @@ function FindPerson({ owned }: { owned: Q.PersonalGroup[] }) {
 
   return (
     <View style={styles.section}>
-      <Label>Find someone by their 12-digit search code</Label>
+      <Label>Find someone by name or 12-digit Public ID</Label>
       <View style={styles.searchRow}>
         <TextInput
-          value={code}
-          onChangeText={(t) => setCode(t.replace(/[^\d ]/g, ''))}
-          keyboardType="number-pad"
-          placeholder="e.g. 7881 8304 1907"
+          value={query}
+          onChangeText={setQuery}
+          onSubmitEditing={find}
+          returnKeyType="search"
+          autoCapitalize="words"
+          autoCorrect={false}
+          placeholder="e.g. Rohit Mudgal or 7881 8304 1907"
           placeholderTextColor={colors.faint}
           style={styles.search}
-          accessibilityLabel="12-digit search code"
+          accessibilityLabel="Name or 12-digit Public ID"
         />
-        <Button title="Find" variant="ghost" onPress={find} disabled={code.replace(/\D/g, '').length !== 12} />
+        <Button title="Find" variant="ghost" onPress={find} disabled={!ready} />
       </View>
       {person && (
         <View style={styles.card}>
           <ProfileCard person={person} compact />
-          <TextInput
-            value={message}
-            onChangeText={setMessage}
-            placeholder="A first message (sent once, then they decide)"
-            placeholderTextColor={colors.faint}
-            style={[styles.search, { marginVertical: space.sm }]}
-            maxLength={500}
-            accessibilityLabel="First message"
-          />
-          <Button title="Send message request" variant="ghost" disabled={!message.trim()} onPress={run(() => Q.messageRequest(person.user_id, message.trim()), 'Message request sent.')} />
+          {person.can_open_chat ? (
+            <Button title="Open chat" icon="chatbubbles" onPress={() => openChat(person.user_id)} style={{ marginTop: space.sm }} />
+          ) : (
+            <>
+              <TextInput
+                value={message}
+                onChangeText={setMessage}
+                placeholder="A first message (sent once, then they decide)"
+                placeholderTextColor={colors.faint}
+                style={[styles.search, { marginVertical: space.sm }]}
+                maxLength={500}
+                accessibilityLabel="First message"
+              />
+              <Button title="Send message request" variant="ghost" disabled={!message.trim()} onPress={run(() => Q.messageRequest(person.user_id, message.trim()), 'Message request sent.')} />
+            </>
+          )}
           {owned.length > 0 && (
             <>
               <Text style={[styles.meta, { marginTop: space.md }]}>Or invite them to one of your groups:</Text>

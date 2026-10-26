@@ -12,11 +12,11 @@
  */
 
 import { useEffect, useState } from 'react';
-import { StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, StyleSheet, Text, View } from 'react-native';
 import * as Q from '@/api/qumanity';
 import { colors, fonts, radius, space } from '@/theme';
 import { Avatar } from './Avatar';
-import { Button, ErrorText, Field } from './ui';
+import { ErrorText, Field } from './ui';
 
 const GENDER: Record<string, string> = { male: 'Male', female: 'Female', both: 'Third gender' };
 export const PRIVATE_NAME = 'Private until you are family';
@@ -46,7 +46,9 @@ export function ProfileCard({ person, right, compact }: { person: Q.FoundPerson;
 }
 
 /**
- * 12-digit Public ID -> Find -> ProfileCard. `onFound` fires with the person found.
+ * 12-digit Public ID -> ProfileCard, looked up automatically as soon as the 12th digit is typed
+ * (no Find button). `onFound` fires with the person found. `action` (e.g. a Link or Invite button)
+ * is shown on the card.
  * Uncontrolled: the field keeps the digits and calls onFound(null) when they change.
  * Controlled (`code` + `onCode`): the parent keeps the digits — e.g. so a wizard's Next can look
  * them up itself — and must clear its own found person inside onCode (one state update, not two).
@@ -57,30 +59,35 @@ export function PublicIdLookup({
   code: codeProp,
   onCode,
   label = 'Their 12-digit Public ID',
+  action,
 }: {
   found: Q.FoundPerson | null;
   onFound: (p: Q.FoundPerson | null) => void;
   code?: string;
   onCode?: (digits: string) => void;
   label?: string;
+  action?: React.ReactNode;
 }) {
   const [own, setOwn] = useState('');
   const code = codeProp ?? own;
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string>();
-  useEffect(() => setError(undefined), [code]);
-
-  async function find() {
-    setBusy(true);
+  // Look up the moment all 12 digits are in; a newer code (still typing/editing) cancels the
+  // older lookup's result so a stale card can never appear.
+  useEffect(() => {
     setError(undefined);
-    try {
-      onFound(await Q.searchPerson(code));
-    } catch (e) {
-      setError((e as Error).message);
-    } finally {
+    if (code.length !== 12 || found) return;
+    let live = true;
+    setBusy(true);
+    Q.searchPerson(code)
+      .then((p) => live && onFound(p), (e) => live && setError((e as Error).message))
+      .finally(() => live && setBusy(false));
+    return () => {
+      live = false;
       setBusy(false);
-    }
-  }
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [code]);
 
   return (
     <View>
@@ -97,10 +104,10 @@ export function PublicIdLookup({
         placeholder="1234 5678 9012"
       />
       {found ? (
-        <ProfileCard person={found} compact />
-      ) : (
-        <Button title="Find" variant="ghost" icon="search" size="sm" onPress={find} busy={busy} disabled={code.length !== 12} />
-      )}
+        <ProfileCard person={found} compact right={action} />
+      ) : busy ? (
+        <ActivityIndicator color={colors.gold} style={{ alignSelf: 'flex-start', marginBottom: space.sm }} />
+      ) : null}
       <ErrorText>{error}</ErrorText>
     </View>
   );

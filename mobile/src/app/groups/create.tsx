@@ -1,7 +1,8 @@
 /**
  * Create a new Personal-timeline group (the single "+" on the Personal tab, 2026-09-28): name it,
  * pick which bucket it belongs in. It's created as Custom on the server, then immediately moved
- * into the chosen category — Family/Friends/Business are never created directly.
+ * into the chosen category — Friends/Business are never created directly (family lives in the
+ * Family Tree now).
  */
 
 import { router, useLocalSearchParams } from 'expo-router';

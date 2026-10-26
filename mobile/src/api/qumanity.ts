@@ -350,6 +350,8 @@ export const saveBusiness = (groupId: number, b: { name: string; sector: string;
 export const searchPerson = (q: string) =>
   api<FoundPerson>(`/api/people/search?q=${encodeURIComponent(q)}`);
 export const invite = (group_id: number, user_id: number) => api<{ status: string }>('/api/people/invite', { body: { group_id, user_id } });
+/** Open (or find) a direct private chat with someone you already share a group with. */
+export const openChatWith = (user_id: number) => api<{ chat_id: number }>('/api/people/open-chat', { body: { user_id } });
 export const messageRequest = (user_id: number, text: string) => api<{ status: string }>('/api/people/message', { body: { user_id, text } });
 export interface FoundPerson {
   user_id: number;
@@ -365,6 +367,9 @@ export interface FoundPerson {
   /** Village + state, or state only when hidden. */
   location?: string | null;
   hidden?: boolean;
+  /** Website 2026-10-27: you already share an approved group (personal or Family Tree unit), so a
+   * private chat can be opened directly (openChatWith) instead of sending a message request. */
+  can_open_chat?: boolean;
 }
 export interface InboxItem {
   id: number;
@@ -654,6 +659,9 @@ export interface MemberRow {
   present_location: string | null;
   profile_picture_url: string | null;
   is_admin: boolean;
+  /** Website 2026-10-27: the honest label. A unit's creator can be an admin without being a
+   * founder (husband/wife), so is_admin alone showed a plain child as "Admin". */
+  role?: 'founder' | 'admin' | 'member';
   you: boolean;
 }
 
