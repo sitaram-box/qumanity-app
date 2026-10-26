@@ -14,6 +14,7 @@
 import { useRouter } from 'expo-router';
 import { useState } from 'react';
 import { ActivityIndicator, Pressable, StyleSheet, Switch, Text, View } from 'react-native';
+import { ApiError } from '@/api/client';
 import * as Q from '@/api/qumanity';
 import { Avatar } from '@/components/Avatar';
 import { BackHeader, Button, Chip, ErrorText, Field, Label, Lead, Screen, Steps, Title } from '@/components/ui';
@@ -82,7 +83,7 @@ export default function FamilyActivate() {
   const [decided, setDecided] = useState<Record<string, string>>({});
   // Step 6
   const [busy, setBusy] = useState(false);
-  const [result, setResult] = useState<{ activate: Q.FamilyResult; marry?: Q.FamilyResult; marryError?: string } | null>(null);
+  const [result, setResult] = useState<{ activate: Q.FamilyResult; marry?: Q.FamilyResult; marryError?: string; alreadyMarried?: boolean } | null>(null);
 
   const go = (s: Step) => {
     setError(undefined);
@@ -213,7 +214,7 @@ export default function FamilyActivate() {
     return out;
   };
 
-  async function marry(): Promise<{ marry?: Q.FamilyResult; marryError?: string }> {
+  async function marry(): Promise<{ marry?: Q.FamilyResult; marryError?: string; alreadyMarried?: boolean }> {
     if (!relationship || relationship === 'single') return {};
     try {
       const m = await Q.familyMarry({
@@ -225,6 +226,9 @@ export default function FamilyActivate() {
       });
       return { marry: m };
     } catch (e) {
+      // Already the spouse in a recorded marriage (e.g. their partner added and linked them):
+      // the website refuses a second one, which is correct — the couple's unit exists. Success.
+      if (e instanceof ApiError && e.status === 400 && /already have an active marriage/i.test(e.message)) return { alreadyMarried: true };
       return { marryError: (e as Error).message };
     }
   }
@@ -256,7 +260,7 @@ export default function FamilyActivate() {
     if (!result) return;
     setBusy(true);
     const m = await marry();
-    setResult({ ...result, ...m, marryError: m.marryError });
+    setResult({ ...result, ...m, marryError: m.marryError, alreadyMarried: m.alreadyMarried });
     setBusy(false);
   }
 
@@ -509,6 +513,9 @@ export default function FamilyActivate() {
           {[...result.activate.notified, ...(result.marry?.notified ?? [])].map((n, i) => (
             <Row key={`n${i}`} k="Notified" v={`${n.name} — invited to build their Family Tree`} />
           ))}
+          {result.alreadyMarried && (
+            <Row k="Your marriage" v="Already recorded in your spouse's family — you're linked there as their partner." />
+          )}
           {result.marryError && (
             <View style={[styles.card, { borderColor: colors.saffron }]}>
               <Text style={styles.v}>Your tree is active, but adding your spouse ran into a problem:</Text>
