@@ -6,12 +6,17 @@
  *
  * Until a member has activated, this screen offers "Build your Family Tree", which opens the
  * in-app 6-step Activation wizard (app/family-activate.tsx, mirroring the website's).
+ *
+ * Membership rules are the website's (2026-10-26): you can leave an in-laws' unit any time, but not
+ * your own unit (you founded it) or your birth unit while unmarried / while your parents or children
+ * are active there — the website says why, and the app shows that message as-is. Admins can remove
+ * members (not founders). Anyone who left or was removed needs an admin's invite to come back.
  */
 
 import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect, useRouter } from 'expo-router';
 import { useCallback, useState } from 'react';
-import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Alert, Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { ApiError } from '@/api/client';
 import * as Q from '@/api/qumanity';
 import { Avatar } from '@/components/Avatar';
@@ -33,6 +38,8 @@ export default function FamilyTree() {
   const [members, setMembers] = useState<Q.MemberRow[] | null>(null);
   const [showMembers, setShowMembers] = useState(false);
   const [joinMsg, setJoinMsg] = useState<string>();
+  const [leaving, setLeaving] = useState(false);
+  const [leaveMsg, setLeaveMsg] = useState<{ ok: boolean; text: string } | null>(null);
 
   const open = useCallback(async (id: number, name: string, mode: 'push' | 'reset' | 'back' = 'push') => {
     setLoading(true);
@@ -74,6 +81,39 @@ export default function FamilyTree() {
       setShowMembers(false);
       setError((e as Error).message);
     }
+  }
+
+  async function leave(u: Q.FamilyNeighborhood) {
+    setLeaving(true);
+    setLeaveMsg(null);
+    try {
+      await Q.familyLeave(u.group_id);
+      // Back to a unit you're still in (your own first); this one now 404s for you.
+      const s = await Q.familyStatus();
+      setStatus(s);
+      const next = s.groups.find((g) => g.is_founder) ?? s.groups[0];
+      if (next) await open(next.id, next.name, 'reset');
+      else setUnit(null);
+      setLeaveMsg({ ok: true, text: `You left ${u.name}. Only an admin's invite can bring you back.` });
+    } catch (e) {
+      // The website's own reason (own unit / birth unit while unmarried / parents or children
+      // still active) — shown as-is, nothing to bypass.
+      setLeaveMsg({ ok: false, text: (e as Error).message });
+    } finally {
+      setLeaving(false);
+    }
+  }
+
+  function confirmLeave(u: Q.FamilyNeighborhood) {
+    const text = "You will stop seeing this family's chat. Your place in the family tree stays. Only an admin's invite can bring you back.";
+    if (Platform.OS === 'web') {
+      if (globalThis.confirm?.(`Leave ${u.name}?\n${text}`)) leave(u);
+      return;
+    }
+    Alert.alert(`Leave ${u.name}?`, text, [
+      { text: 'Cancel', style: 'cancel' },
+      { text: 'Leave', style: 'destructive', onPress: () => leave(u) },
+    ]);
   }
 
   async function askToJoin(id: number) {
@@ -205,12 +245,28 @@ export default function FamilyTree() {
 
           <View style={styles.actions}>
             <Button title="Members" icon="people" variant="soft" onPress={() => showMembersOf(unit.group_id)} style={{ flex: 1 }} />
+            <Button title="Leave" icon="exit-outline" variant="ghost" onPress={() => confirmLeave(unit)} busy={leaving} style={{ flex: 1 }} />
           </View>
           {unit.is_admin && <PublicIdInvite label="Add to this family by Public ID" onInvite={(uid) => Q.familyInvite(unit.group_id, uid)} />}
         </>
       )}
 
-      <MembersSheet visible={showMembers} onClose={() => setShowMembers(false)} title={unit ? `${unit.name} · Members` : 'Members'} members={members} />
+      {leaveMsg && <Text style={[styles.leaveMsg, { color: leaveMsg.ok ? colors.earth : colors.danger }]}>{leaveMsg.text}</Text>}
+
+      <MembersSheet
+        visible={showMembers}
+        onClose={() => setShowMembers(false)}
+        title={unit ? `${unit.name} · Members` : 'Members'}
+        members={members}
+        onRemove={
+          unit?.is_admin
+            ? async (uid) => {
+                await Q.familyRemoveMember(unit.group_id, uid);
+                setUnit((u) => (u ? { ...u, members: Math.max(0, u.members - 1) } : u));
+              }
+            : undefined
+        }
+      />
     </Screen>
   );
 }
@@ -291,5 +347,6 @@ const styles = StyleSheet.create({
   unitTop: { flexDirection: 'row', alignItems: 'center', gap: space.sm },
   unitName: { flex: 1, color: colors.text, fontFamily: fonts.medium, fontSize: 13 },
   actions: { flexDirection: 'row', gap: space.sm, marginTop: space.lg },
+  leaveMsg: { fontFamily: fonts.medium, fontSize: 13, textAlign: 'center', marginTop: space.md },
   ok: { color: colors.earth, fontFamily: fonts.medium, fontSize: 13, textAlign: 'center' },
 });

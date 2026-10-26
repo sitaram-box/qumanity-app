@@ -2,9 +2,12 @@
  * A group's Members list (website social_core.member_display_row): avatar, name, gender, age
  * group, location, Admin/Member, "You" — admins first. Used by personal group chats and by
  * Family units. Rows for a hidden identity arrive already masked by the website.
+ * Pass `onRemove` (Family units, when you are an admin) to show a Remove button per member; the
+ * website refuses founders and explains any other refusal, which is shown under that member.
  */
 
-import { Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Fragment, useEffect, useState } from 'react';
+import { ActivityIndicator, Alert, Modal, Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import type { MemberRow } from '@/api/qumanity';
 import { colors, fonts, radius, space, tint } from '@/theme';
 import { Avatar } from './Avatar';
@@ -17,6 +20,7 @@ export function MembersSheet({
   title = 'Members',
   members,
   footer,
+  onRemove,
 }: {
   visible: boolean;
   onClose: () => void;
@@ -24,8 +28,45 @@ export function MembersSheet({
   members: MemberRow[] | null;
   /** e.g. the "Add by Public ID" box for admins */
   footer?: React.ReactNode;
+  /** Admin-only removal; resolve on success, throw with the website's message on failure. */
+  onRemove?: (userId: number) => Promise<unknown>;
 }) {
-  const sorted = [...(members ?? [])].sort((a, b) => Number(b.is_admin) - Number(a.is_admin) || a.name.localeCompare(b.name));
+  // A local copy so a removed member disappears at once, without reloading the whole list.
+  const [list, setList] = useState<MemberRow[] | null>(members);
+  const [busy, setBusy] = useState<number | null>(null);
+  const [rowError, setRowError] = useState<{ id: number; text: string } | null>(null);
+  useEffect(() => {
+    setList(members);
+    setRowError(null);
+  }, [members]);
+
+  async function remove(m: MemberRow) {
+    if (!onRemove) return;
+    setBusy(m.user_id);
+    setRowError(null);
+    try {
+      await onRemove(m.user_id);
+      setList((l) => (l ?? []).filter((x) => x.user_id !== m.user_id));
+    } catch (e) {
+      setRowError({ id: m.user_id, text: (e as Error).message });
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  function confirmRemove(m: MemberRow) {
+    const text = `${m.name} will no longer see this family's chat. Their place in the family tree stays. Only an admin's invite can bring them back.`;
+    if (Platform.OS === 'web') {
+      if (globalThis.confirm?.(`Remove ${m.name}?\n${text}`)) remove(m);
+      return;
+    }
+    Alert.alert(`Remove ${m.name}?`, text, [
+      { text: 'Cancel', style: 'cancel' },
+      { text: 'Remove', style: 'destructive', onPress: () => remove(m) },
+    ]);
+  }
+
+  const sorted = [...(list ?? [])].sort((a, b) => Number(b.is_admin) - Number(a.is_admin) || a.name.localeCompare(b.name));
   return (
     <Modal visible={visible} animationType="slide" transparent onRequestClose={onClose}>
       <View style={styles.backdrop}>
@@ -34,16 +75,17 @@ export function MembersSheet({
           <View style={styles.head}>
             <Text style={styles.title}>
               {title}
-              {members ? <Text style={styles.count}> · {members.length}</Text> : null}
+              {list ? <Text style={styles.count}> · {list.length}</Text> : null}
             </Text>
             <Pressable onPress={onClose} accessibilityRole="button" accessibilityLabel="Close" hitSlop={10}>
               <Text style={styles.close}>Close</Text>
             </Pressable>
           </View>
           <ScrollView keyboardShouldPersistTaps="handled">
-            {members === null && <Text style={styles.meta}>Loading…</Text>}
+            {list === null && <Text style={styles.meta}>Loading…</Text>}
             {sorted.map((m) => (
-              <View key={m.user_id} style={styles.row} accessibilityLabel={`${m.name}, ${m.is_admin ? 'Admin' : 'Member'}`}>
+              <Fragment key={m.user_id}>
+              <View style={styles.row} accessibilityLabel={`${m.name}, ${m.is_admin ? 'Admin' : 'Member'}`}>
                 <Avatar user={m} size={42} />
                 <View style={{ flex: 1 }}>
                   <Text style={styles.name} numberOfLines={1}>
@@ -57,7 +99,21 @@ export function MembersSheet({
                 <View style={[styles.role, m.is_admin && { backgroundColor: tint(colors.gold) }]}>
                   <Text style={[styles.roleText, m.is_admin && { color: colors.gold }]}>{m.is_admin ? 'Admin' : 'Member'}</Text>
                 </View>
+                {onRemove && !m.you && !m.is_admin && (
+                  <Pressable
+                    onPress={() => confirmRemove(m)}
+                    disabled={busy !== null}
+                    style={styles.removeBtn}
+                    accessibilityRole="button"
+                    accessibilityLabel={`Remove ${m.name}`}
+                    hitSlop={6}
+                  >
+                    {busy === m.user_id ? <ActivityIndicator size="small" color={colors.danger} /> : <Text style={styles.removeText}>Remove</Text>}
+                  </Pressable>
+                )}
               </View>
+              {rowError?.id === m.user_id && <Text style={styles.rowError}>{rowError.text}</Text>}
+              </Fragment>
             ))}
             {footer}
           </ScrollView>
@@ -80,5 +136,8 @@ const styles = StyleSheet.create({
   you: { color: colors.gold, fontFamily: fonts.medium },
   meta: { color: colors.dim, fontFamily: fonts.body, fontSize: 12, marginTop: 2 },
   role: { paddingHorizontal: 9, height: 24, borderRadius: radius.pill, backgroundColor: colors.panelRaised, justifyContent: 'center' },
+  removeBtn: { height: 28, minWidth: 64, paddingHorizontal: 10, borderRadius: radius.pill, borderWidth: 1, borderColor: colors.danger, alignItems: 'center', justifyContent: 'center' },
+  removeText: { color: colors.danger, fontFamily: fonts.bold, fontSize: 11.5 },
+  rowError: { color: colors.danger, fontFamily: fonts.body, fontSize: 12, marginTop: -4, marginBottom: 6, marginLeft: 54 },
   roleText: { color: colors.dim, fontFamily: fonts.bold, fontSize: 11 },
 });

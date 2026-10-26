@@ -676,7 +676,13 @@ export const familyMembers = (groupId: number) => api<{ members: MemberRow[] }>(
 export const familyInvite = (groupId: number, user_id: number) =>
   api<{ status: 'invited' }>(`/api/family-groups/${groupId}/invite`, { body: { user_id } });
 export const familyJoinRequest = (groupId: number) => api<{ status: 'requested' }>(`/api/family-groups/${groupId}/join-request`, { body: {} });
+/** Leave rules (website 2026-10-26): own unit (founder) never; birth unit not while unmarried, or
+ * while your parents/children are active members there; in-laws' unit any time. A 400 explains why.
+ * After leaving, only an admin's invite brings you back. */
 export const familyLeave = (groupId: number) => api<{ status: 'left' }>(`/api/family-groups/${groupId}/leave`, { body: {} });
+/** Admins only; a founder can't be removed. The removed member's place in the tree stays. */
+export const familyRemoveMember = (groupId: number, user_id: number) =>
+  api<{ status: 'removed' }>(`/api/family-groups/${groupId}/remove-member`, { body: { user_id } });
 
 // ---------- Family Tree activation (website family.js wizard; family_core.activate/marry_timeline) ----------
 export type Relationship = 'single' | 'married' | 'separated' | 'divorced' | 'widowed';
@@ -726,6 +732,9 @@ export interface FamilyResult {
   /** Set when the spouse already founds a unit and this member asked to claim the partner place:
    * the children listed in the wizard were not added (that unit's admins can add them). */
   children_not_added?: number;
+  /** Marriage is automatic (website 2026-10-26): the member joined the spouse's unit as co-founder
+   * (admin) and the spouse's parents' unit as a member — no approval. */
+  auto_joined?: { label: string; name: string; group_id: number };
 }
 export const familyActivate = (body: {
   father: FamilySlot;

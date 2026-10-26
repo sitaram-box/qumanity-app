@@ -6,6 +6,9 @@
  *   3 Spouse  (married/separated/divorced/widowed only; optional Public ID link + spouse's parents)
  *   4 Children (same — skipped for Single)   5 Discover (join an existing unit / notify a member /
  *   create new, per person)   6 Review -> POST /api/family/activate, then /api/family/marry.
+ * Marriage is automatic on the website (2026-10-26): joining as a spouse (or giving their Public ID)
+ * makes this member co-founder/admin of the spouse's unit and a member of the spouse's parents'
+ * unit at once — no approval — so the spouse option reads "Join instantly".
  *
  * Every person becomes a slot {name, action: create|join|notify, ...} exactly as
  * family_core._resolve_slot() expects, so Step 6 only picks slots out by key.
@@ -467,13 +470,13 @@ export default function FamilyActivate() {
                             {m.matched_role === 'child' ? ' is a child here' : m.matched_role ? ' founded this family' : ''}
                           </Text>
                           <Button
-                            title={s.key === 'spouse' ? 'Join as their spouse' : 'Request to join'}
+                            title={s.key === 'spouse' ? 'Join instantly' : 'Request to join'}
                             size="sm"
                             onPress={() =>
                               choose(
                                 s.key,
                                 { action: 'join', group_id: m.group_id, matched_node_id: m.matched_node_id },
-                                s.key === 'spouse' ? `Will ask ${m.matched_name} to confirm you as their spouse.` : `Will ask to join ${founders(m)}.`,
+                                s.key === 'spouse' ? `Will join ${founders(m)} as ${m.matched_name}'s spouse.` : `Will ask to join ${founders(m)}.`,
                               )
                             }
                           />
@@ -526,13 +529,15 @@ export default function FamilyActivate() {
           <Title>Your Family Tree is active</Title>
           {result.activate.parents_group_name && <Row k="Your parents' family" v={result.activate.parents_group_name} />}
           {result.marry?.marital_group_name && <Row k="Your own family" v={result.marry.marital_group_name} />}
-          {[...result.activate.joined_requests, ...(result.marry?.joined_requests ?? [])].map((j, i) =>
-            j.label === 'spouse' ? (
-              <Row key={`j${i}`} k="Your spouse" v={`${j.name} will be asked to confirm. Once they approve, you are an admin of your family unit.`} />
-            ) : (
-              <Row key={`j${i}`} k="Join request sent" v={`${j.name} — an admin of that family will approve it`} />
-            ),
+          {result.marry?.auto_joined && (
+            <Row
+              k="Your family"
+              v={`You joined ${result.marry.auto_joined.name}'s family unit as their spouse — you are an admin there, and a member of their parents' family.`}
+            />
           )}
+          {[...result.activate.joined_requests, ...(result.marry?.joined_requests ?? [])].map((j, i) => (
+            <Row key={`j${i}`} k="Join request sent" v={`${j.name} — an admin of that family will approve it`} />
+          ))}
           {!!result.marry?.children_not_added && (
             <Row
               k="Your children"
