@@ -270,6 +270,19 @@ s, a4 = call("POST", "/api/family/activate", wj, {"father": {"name": grp["matche
     "mother": {"name": "Joiner Mother", "action": "create"}, "relationship": "single"}) if grp else (0, {})
 check("step 5 'Request to join': the join request is sent during activation", s == 201 and a4.get("joined_requests"), (s, a4))
 
+# regression 2026-10-26 (500 on the phone): activating when someone else's tree already holds you
+hh = new_member("Linked Husband", "male", "1984-04-04"); ww_tok = new_member("Linked Wife", "female", "1987-07-07")
+ww_id = __import__("sqlite3").connect(str(TMP / "copy.db")).execute("SELECT id FROM users WHERE name='Linked Wife'").fetchone()[0]
+ww_code = __import__("sqlite3").connect(str(TMP / "copy.db")).execute("SELECT search_code FROM account_ids WHERE user_id=? ORDER BY id DESC", (ww_id,)).fetchone()[0]
+call("POST", "/api/family/activate", hh, {"father": {"name": "LH Father", "action": "create"}, "mother": {"name": "LH Mother", "action": "create"}, "relationship": "married"})
+s, mh = call("POST", "/api/family/marry", hh, {"spouse": {"name": "Linked Wife", "action": "create"}, "children": [], "marriage_status": "active"})
+wnode = next(n["node_id"] for n in mh["created_node_ids"] if n["label"] == "spouse")
+s, _ = call("POST", f"/api/family/node/{wnode}/link", hh, {"user_id": ww_code}); check("husband links the wife node to her account", s == 200, s)
+s, aw = call("POST", "/api/family/activate", ww_tok, {"father": {"name": "Satyaprakash Bhardwaj", "action": "create"}, "mother": {"name": "Shakuntala", "action": "create", "is_deceased": True}, "relationship": "married"})
+check("…then she activates: 201 (was a 500 IntegrityError), her existing node reused", s == 201 and aw.get("self_node_id") == wnode, (s, aw))
+s, nbw = call("GET", f"/api/family/node/{aw.get('parents_group_id')}/neighborhood", ww_tok)
+check("…and the couple unit hangs under her new parents' unit", s == 200 and any(g["group_id"] == mh["marital_group_id"] for g in nbw.get("child_groups", [])), nbw.get("child_groups"))
+
 # --- monthly sign election, pilot village (Rohini Sector 24): needs the 500 demo residents ---
 import datetime as dt, random  # noqa: E401
 import election_core as E  # noqa: E402
