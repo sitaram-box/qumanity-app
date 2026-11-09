@@ -66,6 +66,17 @@ async function subCountry(code: string | undefined): Promise<SubCountry | undefi
   return (await loadSub()).countries.find((c) => c.code === code);
 }
 
+/**
+ * The opposite of `onlySubcontinent`: drops the 10 Public Account countries from a list of
+ * places (anything that isn't a country passes through). For a Global Account's Account ID
+ * request: the website refuses any move across the Global<->Public boundary
+ * (account_core.validate_present_location_change, 2026-11-08), so a Global member is only
+ * offered countries the server can accept. The server still enforces the rule either way.
+ */
+export function excludeSubcontinent(places: Place[]): Place[] {
+  return places.filter((p) => p.tier !== 'country' || !SUBCONTINENT_IDS.includes(p.id));
+}
+
 /** Children of a place (null = the top of the tree). `onlySubcontinent` limits countries to the 10. */
 export async function childrenOf(parent: Place | null, onlySubcontinent = false): Promise<Place[]> {
   if (!parent) {

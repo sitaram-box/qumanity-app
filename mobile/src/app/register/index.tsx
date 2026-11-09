@@ -1,4 +1,4 @@
-/** Step 1 · Personal details: name, gender, date & time of birth, mother tongue, optional contact, 5-digit PIN (twice). */
+/** Step 1 · Personal details: name, gender, date & time of birth, mother tongue, optional contact, 5-character PIN (twice). */
 
 import { router } from 'expo-router';
 import { useEffect, useState } from 'react';
@@ -8,7 +8,8 @@ import { zodiacPreview } from '@/api/qumanity';
 import { CodeInput } from '@/components/CodeInput';
 import { Button, Chip, ErrorText, Field, Label, Lead, Screen, Steps, Title } from '@/components/ui';
 import { useApp } from '@/state/app';
-import { colors, fonts, space } from '@/theme';
+import { colors, fonts, space, type } from '@/theme';
+import { PIN_HINT } from '@/components/pin.logic';
 
 const GENDERS = [
   { value: 'male', label: 'Male' },
@@ -46,7 +47,7 @@ export default function PersonalDetails() {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(dob) || Number.isNaN(Date.parse(dob)) || dob > new Date().toISOString().slice(0, 10)) errors.dob = 'Enter a valid date of birth.';
   if (!/^([01]\d|2[0-3]):[0-5]\d$/.test(tob)) errors.tob = 'Enter time of birth as HH:MM (24-hour).';
   if (email && !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) errors.email = 'That email does not look right.';
-  if (pin.length !== 5) errors.pin = 'Choose a 5-digit PIN.';
+  if (pin.length !== 5) errors.pin = 'Choose a 5-character PIN.';
   else if (pin2 !== pin) errors.pin = 'The two PINs do not match.';
   const valid = Object.keys(errors).length === 0;
   const show = (k: string) => (touched ? errors[k] : undefined);
@@ -72,7 +73,7 @@ export default function PersonalDetails() {
   }
 
   return (
-    <Screen footer={<Button title="Next · Global account" onPress={next} />}>
+    <Screen footer={<Button title="Next · Birth Location" onPress={next} />}>
       <Steps at={1} of={4} />
       <Title>Personal details</Title>
       <Lead>Your date of birth sets your sun sign, which decides your council voting group.</Lead>
@@ -117,7 +118,8 @@ export default function PersonalDetails() {
       <Field label="Phone (optional, for PIN recovery)" value={phone} onChangeText={setPhone} keyboardType="phone-pad" />
       <Field label="Email (optional, for PIN recovery)" value={email} onChangeText={setEmail} keyboardType="email-address" autoCapitalize="none" error={show('email')} />
 
-      <Label>Choose a 5-digit PIN</Label>
+      <Label>Choose a 5-character PIN</Label>
+      <Text style={type.small}>{PIN_HINT}</Text>
       <CodeInput length={5} secure value={pin} onChange={setPin} autoFocus={false} accessibilityLabel="New PIN" />
       <Label>Type the PIN again</Label>
       <CodeInput length={5} secure value={pin2} onChange={setPin2} autoFocus={false} accessibilityLabel="Confirm PIN" />

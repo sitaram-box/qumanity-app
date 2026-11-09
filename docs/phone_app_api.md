@@ -45,7 +45,7 @@ The app shows the tour once after the first sign-in (skippable, and it can be re
 - **Register a new member:** `POST /api/auth/register` with `assisted: true`.
   - On the website, the signed-in member is the helper and stays signed in as themself.
   - In the app, the helper has signed out and sends `helper_private_id` + `helper_pin`. These are checked **before** the account is created, with the same 5-tries lock as sign-in; a wrong PIN returns 403.
-  - The helper is the referrer and is stored in `users.referred_by_user_id`. A cash donation is split between the 8 location wallets, the helper and the new member.
+  - The helper is the referrer and is stored in `users.referred_by_user_id`. (Originally a cash donation was split between the 8 location wallets, the helper and the new member; that payment path was removed on 2026-10-11 — see "No payments" below. A free registration Qoin is now minted server-side, and the registration response has no `donation` object.)
   - Nobody is signed in afterwards: the reply carries `assisted: true` and no token.
 - **Account IDs:**
   - `GET /api/people/me` returns `account_history` (with row `id`) and `account_requests`.
@@ -72,7 +72,7 @@ The app shows the tour once after the first sign-in (skippable, and it can be re
 - **Connection check:** `/api/zodiac/current`
 
 ## Checking it
-`python3 Qumanity_App/tools/website-check/check_app_api.py` runs 87 checks. It registers two people, then goes through:
+`python3 Qumanity_App/tools/website-check/check_app_api.py` runs 166 checks (as of 2026-11-09; 87 when this section was first written). It registers two people, then goes through:
 - sign-in, posting and voting, all 8 boards and councils
 - search by 12-digit code, a message request that is accepted, private and family chats
 - wallet, election history, languages, and a PIN change
@@ -170,3 +170,107 @@ The steps and payloads are the same as the website's `static/js/family.js`.
    - `marriage_status`: married → `active`, separated → `separated`, divorced → `dissolved`, widowed → `active`.
    - Activation can only happen once (a second call returns 400).
    - If `marry` fails, the member stays activated and the app offers "Try adding your spouse again".
+
+## 2026-11-09 sync: website release `af01272` (Global Accounts, C1 validation, election tally)
+
+Audited against the website's `main` at `af01272` (application commits `a7d43a7` backend, `a157d7a`
+website UI; `af01272` is documentation only). Checked against the running code on a throwaway
+database copy, not taken from documents. `tools/website-check/check_app_api.py`: **166 passed, 0
+failed** after this sync.
+
+### Global Account (server-decided)
+- A member whose Present Location's country is outside the 10 Public Account countries is a
+  **Global Account**. The server decides this from `present_location_json` every time; the app
+  never sends a flag, and none would be trusted.
+- **Registration**: `present_location` stops at `{continent, country}` (no state/zone/district/
+  tehsil/village keys — sending any is a 400). The app's `register/public.tsx` picker produces
+  exactly that for a non-Sub-continent country (Phase 2).
+- **`GET /api/me`** → `is_global_account: boolean`. The app uses it for UI only (hiding the Public
+  tab, choosing which countries the Account ID request offers). Every permission is still checked by
+  the server.
+- **Boards for a Global Account**: Country, Continent and Earth boards are readable; `can_post` and
+  `can_pay_post` are false on all three (those three levels are broadcast-and-vote only for every
+  member; a post there is refused: "Posts cannot be made on this page"); Zone/State/District/
+  Tehsil/Village boards return 404 for a Global Account. The app's composer appears only
+  when `can_post || can_pay_post`, so it follows this without special cases.
+- **Q-Punch**: a Global Account is never eligible (`/api/qpunch/village` 404, nominate/vote 400).
+
+### Account ID requests (C1 correction, 2026-11-08)
+- `POST /api/people/account-ids/request` and the admin decision both run
+  `account_core.validate_present_location_change()`: full ancestry checks, real-village existence,
+  and a **hard Global↔Public boundary lock** in both directions (400: "Moving your Present Location
+  across the Public/Global Account boundary isn't supported through this request -- contact Admin.").
+- **App change (2026-11-09)**: the request screen used to offer only the 10 Sub-continent
+  countries to everyone, so a Global member could only send requests that are always refused.
+  `account-ids.tsx` now offers a Public member the 10 Sub-continent countries (as before) and a
+  Global member every *other* country (`LocationPicker outsideSubcontinent`,
+  `locations.excludeSubcontinent()`). The website's own copy of this document says "no app change
+  was needed" here; that is correct for Public members only.
+
+### PIN format (website `PIN_RE`)
+- A PIN is **5 characters**: letters, digits or the symbols `!@#$%^&*()_+-=[]{}|;:'",.<>/?`, at
+  least one letter or digit, **case-sensitive**. Checked on sign-in, registration, PIN change and PIN
+  reset; refused PINs get `"PIN must be 5 characters. It can include numbers, letters, or special
+  characters — but not all special characters."`
+- **App change (2026-11-09)**: `CodeInput` accepted digits only, so a member with a letter/symbol
+  PIN could not sign in on the phone. PIN boxes now use the full keyboard and the same character
+  set (`components/pin.logic.ts`); one-time codes stay digits only.
+
+### Collective Board: own posts
+- Since website `8bb34bb`: **nobody votes on their own post**. The author gets `can_vote: false`
+  and a vote is refused. The app shows vote buttons only when `can_vote` is true — already
+  aligned. Vote replacement (sending `0`, `1` or `-1` again) still works for everyone else.
+
+### Q-Punch election results
+- `election_core._ensure_tallied()` now recomputes a closed cycle's winners from the current votes
+  (`a7d43a7`). Verified: `winners.male`/`.female` are the persisted winners' **names**, with
+  `male_votes`/`female_votes` totals; `votes`/`winners` are `null` until `status == "closed"`.
+  Response fields match the app's `ElectionSummary`/`ElectionGuide` types exactly; the app
+  displays them as sent (no client-side winner or tie logic).
+
+### Registration response
+- No `donation` object (never sent since payments were removed). The checker's old expectation of
+  one was the stale part; nothing in the app reads it.
+- New optional fields the app does not send (registration works without them): `tob_unknown`,
+  `religion_belief`, and provisional `"PROV-<n>"` village/tehsil ids created through
+  `POST /api/locations/provisional`.
+
+### Notifications
+- `GET /api/notifications/summary` adds `unread_queries` (Admin's replies to the member's
+  questions) and `unread_council` (their Q-Punch council's replies), and **`total` includes both**.
+  Both are read in Qmail, which the app does not have. **App change (2026-11-09)**: the
+  Notifications screen lists them as rows that open Qmail on the website, so the bell never counts
+  items the screen doesn't show.
+
+### Removed / not used by the app
+- `GET /api/poems/meta` and `/api/poems/<lang>/<index>` were removed with the website's marquee.
+  The app's marquee is off by default (`QM_MARQUEE_ENABLED`), so nothing calls them; its code and
+  the skipped `marquee.test.ts` remain until a decision is made about the marquee.
+- New website routes **not used by the app** (features the app doesn't have yet): Family Tree
+  person editing (`/api/family/person/<id>/{cascade,child,sibling,spouse}`,
+  `/api/family/node/<id>/details`), GPS observations (`/api/location/observation`,
+  `.../withdraw-overpass`), provisional locations and location search (`/api/locations/provisional`,
+  `/api/locations/search`), Q-Map (`/api/qmap/user-nearby/<id>`), `/api/public-ids/suggest`,
+  `/api/support/ticket`, `/api/queries/mine`.
+
+### Known backend gap (website fix needed) — UNRESOLVED
+- **Issue**: a **retired account** (`users.is_removed = 1`) can no longer sign in (`/login` and
+  the registration helper check `_verify_helper()` filter `is_removed = 0`, website `087c48e`), but an app token issued
+  before retirement keeps working until it expires (`APP_TOKEN_DAYS = 30`). `_app_token_auth()`
+  checks the signature, expiry and PIN fingerprint, not `is_removed`.
+- **Evidence (local, disposable DB copy; production not checked)**: after setting
+  `is_removed = 1`, the member's existing token got `/api/me` → 200 and a village board post →
+  201. The checker prints this every run as an `INFO KNOWN BACKEND GAP` line (not counted as a
+  pass or a failure).
+- **Proposed website fix (not implemented — needs the owner's authorization)**: in
+  `_app_token_auth()`, select `pin_hash, is_removed` and return
+  `401 {"error": "Please sign in again"}` when the row is missing, the PIN fingerprint differs,
+  **or `is_removed` is set**. Add a website regression test: register → take the app token →
+  set `is_removed = 1` → `/api/me`, a board post and another protected `/api/...` route must all
+  return 401. When the fix lands, the checker's INFO line turns into a counted check.
+- **App side, already in place**: `api/client.ts` calls the handler `state/app.tsx` registers (sign out)
+  on any 401 to a signed-in request — covered by `client.test.ts` "a 401 signs out" — so no app
+  change is needed for the fix.
+- Related, not tested: website browser sessions (`login_required`) only check that
+  `session["user_id"]` is set, so an already-open browser session of a retired member may have
+  the same gap. Website-only; noted for the website fix.

@@ -217,14 +217,19 @@ export default function Review() {
     ["Born", `${draft.dob} at ${draft.tob}`],
     ["Mother tongue", draft.language],
     [
-      "Global account · born in",
+      // 2026-11-08 (Phase 2): "Global account"/"Public account" were never the right words
+      // here -- these are Birth Location and Present Location, which together with the
+      // backend's own account_access_type() decide Global vs Public, not the other way round.
+      // The value shown is always exactly what was picked (never a fabricated Village/Tehsil/
+      // District for a Global registrant, since draft.present simply has no such entries then).
+      "Birth Location",
       draft.birth
         .filter((p) => p.label !== null)
         .map((p) => p.name)
         .join(" › "),
     ],
     [
-      "Public account · living in",
+      "Present Location",
       draft.present
         .filter((p) => p.label !== null)
         .map((p) => p.name)

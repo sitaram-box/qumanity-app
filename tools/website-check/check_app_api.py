@@ -70,7 +70,17 @@ for lvl in ["village", "tehsil", "district", "state", "zone", "country", "contin
 s, p = call("POST", "/api/board/post", A_tok, {"level": "village", "content": "Clean the village pond on Sunday"}); check("post in village", s == 201, p)
 s, v = call("POST", "/api/board/vote", B_tok, {"post_id": p.get("id"), "value": 1}); check("neighbour votes +1", s == 200 and v.get("score") == 1, v)
 s, bd = call("GET", "/api/board/village", A_tok); post = next((x for x in bd["posts"] if x["id"] == p.get("id")), {})
-check("board shows the post, score and vote state", post.get("score") == 1 and post.get("can_vote") is True and post.get("mine") is True)
+# 2026-11-09: since website 8bb34bb (2026-10-27) nobody votes on their own post -- board_core
+# sends can_vote=false to the author and refuses the vote. This check used to expect
+# can_vote=true for the author, which is why it had been failing since then; the app's Board
+# shows vote buttons only when can_vote is true, so it already follows the rule.
+check("board shows the post, score and vote state (author cannot vote on their own post)",
+      post.get("score") == 1 and post.get("can_vote") is False and post.get("mine") is True, {k: post.get(k) for k in ("score", "can_vote", "mine")})
+s, bdb = call("GET", "/api/board/village", B_tok); postb = next((x for x in bdb["posts"] if x["id"] == p.get("id")), {})
+check("…a neighbour sees the same post as votable, not theirs, with their vote recorded",
+      postb.get("can_vote") is True and postb.get("mine") is False and postb.get("my_vote") == 1, {k: postb.get(k) for k in ("can_vote", "mine", "my_vote")})
+s, own = call("POST", "/api/board/vote", A_tok, {"post_id": p.get("id"), "value": 1}); check("the author's own vote is refused by the server", s >= 400, (s, own))
+s, v0 = call("POST", "/api/board/vote", B_tok, {"post_id": p.get("id"), "value": 0}); check("a neighbour can replace their vote (back to 0)", s == 200 and v0.get("score") == 0, v0)
 s, e = call("POST", "/api/board/comment", A_tok, {"post_id": p.get("id"), "text": "hi"}); check("comment refused while voting is open", s >= 400)
 s, _ = call("GET", "/api/subgroups", A_tok); check("village sub-groups", s == 200)
 
@@ -189,7 +199,74 @@ s, rm = call("GET", "/api/referrer/me", tk); check("…shows as pending", rm.get
 # --- website changes of 2026-10 the app now follows ---
 s, reg = call("POST", "/api/auth/register", body={"name": "Devi Member", "gender": "female", "dob": "1992-02-02", "tob": "07:15", "pin": "24680",
     "language": "Hindi", "birth_location": present, "present_location": present, "client": "app", "donation_amount": 30, "referral_code": "REF-OLD"})
-check("self-registration is free: account made, nothing to pay, free Qoin minted", s == 201 and reg.get("token") and "donation_pending_amount" not in reg and (reg.get("donation") or {}).get("kind") == "free", (s, reg.get("error"), reg.get("donation")))
+# The response never had a "donation" object -- apply_free_registration() mints the free Qoin
+# server-side with no field reporting it back (confirmed against the live app.py/wallet_core.py
+# this session, 2026-11-08). This assertion used to also check for a `donation.kind == "free"`
+# marker that the backend has never actually sent; dropped as a demonstrably stale leftover from
+# before the 2026-10 payment removal, not a regression. What still matters, and is still checked:
+# an old-shaped client sending the now-obsolete donation_amount/referral_code fields is ignored,
+# never charged, and registration still succeeds for free.
+check("self-registration is free: account made, nothing to pay, free Qoin minted", s == 201 and reg.get("token") and "donation_pending_amount" not in reg, (s, reg.get("error")))
+
+# --- Phase 2 (2026-11-08): Global Account registration, in the EXACT payload shape
+# register/public.tsx's LocationPicker/toStruct() now produces for a non-Subcontinent country
+# (continent + country only, no lower-level keys at all) ---
+japan_present = {"continent": {"id": "O_AS", "code": "AS", "name": "Asia"}, "country": {"id": "O_AS_JPN", "code": "JPN", "name": "Japan"}}
+s, greg = call("POST", "/api/auth/register", body={"name": "App Global Member", "gender": "female", "dob": "1990-06-15", "tob": "06:00", "pin": "97531",
+    "language": "English", "birth_location": japan_present, "present_location": japan_present, "client": "app"})
+check("app-shaped Global Account registration (country-only present_location) succeeds (201) with a token", s == 201 and greg.get("token"), (s, greg.get("error")))
+s, gme = call("GET", "/api/me", greg.get("token"))
+check("the app's own /api/me call reports is_global_account=True for this registrant", s == 200 and gme.get("is_global_account") is True, gme)
+check("present_location_struct carries exactly continent+country -- no fabricated lower-level fields",
+      s == 200 and set(gme.get("present_location_struct", {}).keys()) == {"continent", "country"}, gme.get("present_location_struct"))
+
+# --- Phase 3 (2026-11-08): a Global Account cannot reach Q-Punch election data through the
+# real route, by direct navigation or otherwise -- backend authorization, not merely the app
+# hiding the Public tab, is what actually enforces this. ---
+s, gqp = call("GET", "/api/qpunch/village", greg.get("token"))
+check("a Global Account's direct GET /api/qpunch/village is REJECTED (404, 'no group at this level') -- not the app's tab-hiding, the backend's own chain_of()/group_for()", s == 404, (s, gqp))
+s, gnom = call("POST", "/api/election/nominate", greg.get("token"), {"reason": "x", "why_vote": "x", "changes": "x"})
+check("a Global Account's direct POST /api/election/nominate is REJECTED (400)", s == 400, (s, gnom))
+s, gvote = call("POST", "/api/election/vote", greg.get("token"), {"candidate_user_id": a["user_id"], "gender": "male"})
+check("a Global Account's direct POST /api/election/vote is REJECTED (400)", s == 400, (s, gvote))
+
+# --- 2026-11-09 website->app sync audit ---
+# PIN format: the website's PIN_RE allows 5 characters from letters, digits and symbols (at least
+# one letter or digit, case-sensitive). The app's CodeInput accepted digits only until this sync,
+# so a letter/symbol PIN could not sign in on the phone (components/pin.logic.ts).
+s, lp = call("POST", "/api/auth/register", body={"name": "Letter Pin Member", "gender": "male", "dob": "1993-03-03", "tob": "09:30", "pin": "Ab#12",
+    "language": "Hindi", "birth_location": present, "present_location": present, "client": "app"})
+check("register with a letter+symbol PIN ('Ab#12') succeeds", s == 201 and lp.get("token"), (s, lp.get("error")))
+check("…and that PIN signs in through the app's /login (case-sensitive)", bool(login(lp.get("private_code", ""), "Ab#12")) and not login(lp.get("private_code", ""), "ab#12"))
+s, sp = call("POST", "/api/auth/register", body={"name": "Symbol Pin Member", "gender": "male", "dob": "1993-03-03", "tob": "09:30", "pin": "!@#$%",
+    "language": "Hindi", "birth_location": present, "present_location": present, "client": "app"})
+check("an all-symbol PIN is refused with the server's own message", s == 400 and "PIN" in (sp.get("error") or ""), (s, sp))
+
+# Account ID requests across the Global/Public boundary (C1, 2026-11-08). The app now offers a
+# Global member only countries outside the 10 (account-ids.tsx); the server is the real gate.
+france = {"continent": {"id": "O_EU", "code": "EU", "name": "Europe"}, "country": {"id": "O_EU_FRA", "code": "FRA", "name": "France"}}
+s, gx = call("POST", "/api/people/account-ids/request", greg.get("token"), {"present_location": present})
+check("a Global member asking for a Sub-continent Account ID is refused (boundary lock)", s == 400 and "boundary" in (gx.get("error") or ""), (s, gx))
+s, gf = call("POST", "/api/people/account-ids/request", greg.get("token"), {"present_location": france})
+check("a Global member asking for another non-Sub-continent country (France) is accepted", s in (200, 201), (s, gf))
+
+# Notifications: total counts Admin-query and council replies, which live in Qmail (not in the
+# app); the app's Notifications screen lists them so the bell never points at an empty screen.
+s, ns = call("GET", "/api/notifications/summary", greg.get("token"))
+check("notification summary carries unread_queries and unread_council, and total includes them",
+      s == 200 and {"unread_queries", "unread_council"} <= set(ns)
+      and ns["total"] == ns["unread_private"] + ns["unread_groups"] + ns["pending_requests"] + ns["unread_queries"] + ns["unread_council"], ns)
+
+# KNOWN BACKEND GAP (reported, not an app check): a retired account (users.is_removed=1) can no
+# longer sign in, but an app token issued before retirement keeps working until it expires
+# (app.py _app_token_auth() checks signature/expiry/PIN, not is_removed). Printed, not counted.
+import sqlite3 as _sq  # noqa: E402
+s, rt = call("POST", "/api/auth/register", body={"name": "Retired Member", "gender": "male", "dob": "1980-08-08", "tob": "08:00", "pin": "13579",
+    "language": "Hindi", "birth_location": present, "present_location": present, "client": "app"})
+_c = _sq.connect(str(TMP / "copy.db")); _c.execute("UPDATE users SET is_removed = 1 WHERE id = ?", (rt["user_id"],)); _c.commit(); _c.close()
+_still = call("GET", "/api/me", rt["token"])[0]
+print(f"INFO  KNOWN BACKEND GAP: a retired member's existing app token -> /api/me {_still} "
+      f"({'still signed in -- needs a website fix in _app_token_auth()' if _still == 200 else 'refused -- gap closed'})")
 s, k = call("GET", "/api/me/kundali", reg.get("token")); check("my Moon-based Kundali (chart + table + dasha)", s == 200 and k.get("chart_svg", "").startswith("<svg") and k.get("table") and k.get("dasha", {}).get("current"), s)
 s, me2 = call("GET", "/api/me", reg.get("token")); check("/api/me has birth_location_struct + preferred_language", "birth_location_struct" in me2 and "preferred_language" in me2)
 s, lg = call("POST", "/api/user/languages", reg.get("token"), {"preferred": "hi"}); check("set preferred language", s == 200 and lg.get("preferred") == "hi", lg)

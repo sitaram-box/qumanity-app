@@ -6,7 +6,8 @@ import { StyleSheet, Text, View } from 'react-native';
 import { requestPinReset, verifyPinReset } from '@/api/qumanity';
 import { CodeInput } from '@/components/CodeInput';
 import { Button, Chip, ErrorText, Field, Label, Lead, Screen, Title } from '@/components/ui';
-import { colors, fonts, space } from '@/theme';
+import { colors, fonts, space, type } from '@/theme';
+import { PIN_HINT } from '@/components/pin.logic';
 
 export default function ForgotPin() {
   const [privateId, setPrivateId] = useState('');
@@ -82,7 +83,8 @@ export default function ForgotPin() {
           <Text style={styles.sent}>Code sent to {sentTo}.</Text>
           {devCode && <Text style={styles.dev}>Testing: no SMS/email service is connected yet, so the code is shown here: {devCode}</Text>}
           <Field label="Code" value={otp} onChangeText={setOtp} keyboardType="number-pad" />
-          <Label>New 5-digit PIN</Label>
+          <Label>New 5-character PIN</Label>
+          <Text style={type.small}>{PIN_HINT}</Text>
           <CodeInput length={5} secure value={pin} onChange={setPin} autoFocus={false} accessibilityLabel="New PIN" />
         </>
       )}

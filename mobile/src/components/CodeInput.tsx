@@ -1,11 +1,13 @@
 /**
- * Digit boxes for OTP (6) and PIN (5). One hidden TextInput drives the boxes,
- * so paste and SMS autofill work; `secure` masks PIN digits.
+ * Character boxes for a one-time code (`otp`, digits only) and a PIN (5 characters: letters,
+ * digits or symbols — the website's rule, see pin.logic.ts). One hidden TextInput drives the
+ * boxes, so paste and SMS autofill work; `secure` masks what is typed.
  */
 
 import { useRef } from 'react';
 import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import { colors, fonts, radius } from '@/theme';
+import { cleanOtpInput, cleanPinInput } from './pin.logic';
 
 export function CodeInput({
   length,
@@ -39,13 +41,19 @@ export function CodeInput({
       <TextInput
         ref={ref}
         value={value}
-        onChangeText={(t) => onChange(t.replace(/\D/g, '').slice(0, length))}
-        keyboardType="number-pad"
+        onChangeText={(t) => onChange(otp ? cleanOtpInput(t, length) : cleanPinInput(t))}
+        // A PIN can contain letters and symbols, so it needs the full keyboard; a one-time code
+        // keeps the number pad. PINs are case-sensitive: no auto-capitalising or auto-correct,
+        // and a secure entry so the keyboard never learns or suggests it.
+        keyboardType={otp ? 'number-pad' : 'default'}
+        autoCapitalize="none"
+        autoCorrect={false}
+        spellCheck={false}
         maxLength={length}
         autoFocus={autoFocus}
         textContentType={otp ? 'oneTimeCode' : 'password'}
         autoComplete={otp ? 'sms-otp' : 'off'}
-        secureTextEntry={false}
+        secureTextEntry={!otp}
         caretHidden
         style={styles.hidden}
         accessibilityLabel={accessibilityLabel}

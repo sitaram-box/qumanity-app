@@ -20,7 +20,7 @@ import { colors, fonts, radius, space, tint, type } from '@/theme';
 const group4 = (s: string) => s.replace(/(\d{4})(?=\d)/g, '$1 ');
 
 export default function AccountIds() {
-  const { refreshMe } = useApp();
+  const { me, refreshMe } = useApp();
   const [rows, setRows] = useState<Q.AccountIdRow[] | null>(null);
   const [requests, setRequests] = useState<Q.AccountIdRequest[]>([]);
   const [error, setError] = useState<string>();
@@ -104,7 +104,18 @@ export default function AccountIds() {
         }
       >
         <BackHeader title="New Account ID" subtitle="Where do you live now?" />
-        <LocationPicker path={path} onChange={setPath} onlySubcontinent onComplete={onComplete} />
+        {/* Offer only places on the member's own side of the Global/Public boundary: the website
+            refuses any request that crosses it (2026-11-08). A Public member keeps the 10
+            Sub-continent countries, as before; a Global member gets every other country instead
+            of only ones that would always be refused. is_global_account is the server's own
+            classification (GET /api/me); the server still re-checks every request. */}
+        <LocationPicker
+          path={path}
+          onChange={setPath}
+          onlySubcontinent={!me?.is_global_account}
+          outsideSubcontinent={!!me?.is_global_account}
+          onComplete={onComplete}
+        />
         <ErrorText>{error}</ErrorText>
       </Screen>
     );
@@ -152,6 +163,9 @@ export default function AccountIds() {
         <>
           <Text style={[type.small, { marginBottom: space.sm }]}>
             Ask for a new Account ID for the place you live now. The council of that place approves it after checking you are there.
+            {me?.is_global_account
+              ? ' You can move to any country outside the Indian Sub-continent here; moving into the Sub-continent needs Admin.'
+              : ' You can move anywhere in the Indian Sub-continent here; moving to another country needs Admin.'}
           </Text>
           <Button title="Request a new Account ID" icon="add-circle-outline" variant="ghost" onPress={() => setPicking(true)} />
         </>

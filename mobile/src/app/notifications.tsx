@@ -3,7 +3,8 @@
 import { Ionicons } from '@expo/vector-icons';
 import { router, useFocusEffect } from 'expo-router';
 import { useCallback, useState } from 'react';
-import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Linking, Pressable, StyleSheet, Text, View } from 'react-native';
+import { currentServer } from '@/api/client';
 import * as Q from '@/api/qumanity';
 import { Avatar } from '@/components/Avatar';
 import { BackHeader, Chip, ErrorText, Screen } from '@/components/ui';
@@ -96,6 +97,36 @@ export default function Notifications() {
               <Ionicons name="chevron-forward" size={18} color={colors.faint} />
             </Pressable>
           )}
+          {/* Replies that live in Qmail, which the app doesn't have yet. The bell's total
+              counts them, so they're listed here (opening Qmail on the website) instead of
+              leaving an unexplained badge over an empty screen. */}
+          {(
+            [
+              ['unread_queries', 'reply from Admin to your question', 'replies from Admin to your questions', 'help-circle'],
+              ['unread_council', 'reply from your council', 'replies from your council', 'shield-checkmark'],
+            ] as const
+          ).map(([key, one, many, icon]) => {
+            const n = summary[key] ?? 0;
+            if (n <= 0) return null;
+            return (
+              <Pressable
+                key={key}
+                style={styles.row}
+                onPress={() => Linking.openURL(`${currentServer()}/qmail`)}
+                accessibilityRole="link"
+                accessibilityHint="Opens Qmail on the Qumanity website"
+              >
+                <Ionicons name={icon} size={20} color={colors.gold} />
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.rowText}>
+                    {n} unread {n === 1 ? one : many}
+                  </Text>
+                  <Text style={styles.meta}>In Qmail on the website (sign in there) — not in the app yet.</Text>
+                </View>
+                <Ionicons name="open-outline" size={18} color={colors.faint} />
+              </Pressable>
+            );
+          })}
           {summary.unread_groups > 0 && (
             <Pressable style={styles.row} onPress={() => router.push('/personal')} accessibilityRole="button">
               <Ionicons name="people" size={20} color={colors.teal} />

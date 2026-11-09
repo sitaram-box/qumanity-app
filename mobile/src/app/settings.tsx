@@ -9,6 +9,7 @@ import { CodeInput } from '@/components/CodeInput';
 import { BackHeader, Button, Chip, ErrorText, Label, Screen, ListRow } from '@/components/ui';
 import { useApp } from '@/state/app';
 import { colors, fonts, radius, space } from '@/theme';
+import { PIN_HINT } from '@/components/pin.logic';
 
 export default function Settings() {
   const { me, refreshMe, acceptToken, signOut, server } = useApp();
@@ -92,7 +93,7 @@ export default function Settings() {
         <Label>Change PIN</Label>
         <Text style={styles.meta}>Current PIN</Text>
         <CodeInput length={5} secure value={current} onChange={setCurrent} autoFocus={false} accessibilityLabel="Current PIN" />
-        <Text style={styles.meta}>New PIN</Text>
+        <Text style={styles.meta}>New PIN — {PIN_HINT}</Text>
         <CodeInput length={5} secure value={next} onChange={setNext} autoFocus={false} accessibilityLabel="New PIN" />
         <Text style={styles.meta}>New PIN again</Text>
         <CodeInput length={5} secure value={again} onChange={setAgain} autoFocus={false} accessibilityLabel="New PIN again" />

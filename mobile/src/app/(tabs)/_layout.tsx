@@ -4,6 +4,7 @@ import { useRouter } from 'expo-router';
 import { useEffect, useRef, type ComponentProps } from 'react';
 import * as Q from '@/api/qumanity';
 import DashboardHeader from '@/components/DashboardHeader';
+import { useApp } from '@/state/app';
 import { colors, fonts, timelineColors } from '@/theme';
 
 type Icon = ComponentProps<typeof Ionicons>['name'];
@@ -28,6 +29,7 @@ export default function TabsLayout() {
   // throws "The imperative router is unavailable before the first render has finished". The hook's
   // router queues through React context and is valid as soon as this component renders.
   const router = useRouter();
+  const { me } = useApp();
   const checked = useRef(false);
   useEffect(() => {
     if (checked.current) return;
@@ -41,6 +43,16 @@ export default function TabsLayout() {
     );
   }, [router]);
 
+  // 2026-11-08 (Phase 2): a Global Account's Present Location is outside the 10 Public Account
+  // countries, so it has no Village/Tehsil/.../Zone group at all -- the website's own Dashboard
+  // hides the Public tab/panel entirely for the same reason (templates/dashboard.html's
+  // `{% if not profile.is_global_account %}`). `me.is_global_account` is server-derived, never
+  // decided here. `unstable_settings.initialRouteName` above stays 'public' for a Public Account
+  // (the common case); a Global Account's actual initial tab is still its first VISIBLE one
+  // (Global), since expo-router's <Tabs> falls back to the first rendered screen when the
+  // configured initial route isn't present.
+  const tabs = me?.is_global_account ? TABS.filter((t) => t.name !== 'public') : TABS;
+
   return (
     <Tabs
       screenOptions={{
@@ -53,7 +65,7 @@ export default function TabsLayout() {
         sceneStyle: { backgroundColor: colors.ink },
       }}
     >
-      {TABS.map((t) => (
+      {tabs.map((t) => (
         <Tabs.Screen
           key={t.name}
           name={t.name}

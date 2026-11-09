@@ -6,7 +6,7 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useEffect, useMemo, useState } from 'react';
 import { ActivityIndicator, FlatList, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
-import { autoDescend, childrenOf, isComplete, type Place } from '@/api/locations';
+import { autoDescend, childrenOf, excludeSubcontinent, isComplete, type Place } from '@/api/locations';
 import { colors, fonts, radius, space } from '@/theme';
 import { ErrorText } from './ui';
 
@@ -14,11 +14,14 @@ export function LocationPicker({
   path,
   onChange,
   onlySubcontinent = false,
+  outsideSubcontinent = false,
   onComplete,
 }: {
   path: Place[];
   onChange: (path: Place[]) => void;
   onlySubcontinent?: boolean;
+  /** Hide the 10 Sub-continent countries (a Global Account's Account ID request). */
+  outsideSubcontinent?: boolean;
   /** Called whenever completeness changes. */
   onComplete?: (done: boolean) => void;
 }) {
@@ -43,7 +46,8 @@ export function LocationPicker({
       if (descended.length !== path.length) return onChange(descended);
       const leafNow = descended[descended.length - 1] ?? null;
       if (leafNow?.tier === 'country' && !onlySubcontinent && !isSubcontinent(leafNow)) return setOptions([]);
-      setOptions(await childrenOf(leafNow, onlySubcontinent));
+      const kids = await childrenOf(leafNow, onlySubcontinent);
+      setOptions(outsideSubcontinent ? excludeSubcontinent(kids) : kids);
     })().catch((e) => live && setError(String(e?.message ?? e)));
     return () => {
       live = false;

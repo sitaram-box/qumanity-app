@@ -45,14 +45,24 @@ describe.skipIf(!has)('location tree (website data)', () => {
   it('India: Zone → State → District → Tehsil → Village, with the website ids', async () => {
     const path = await walk(['Asia', 'India', 'Central State', 'Delhi', 'North West Delhi', 'Bawana'], true);
     expect(path.map((p) => p.tier)).toEqual(['continent', 'country', 'zone', 'state', 'district', 'tehsil']);
-    expect(path.map((p) => p.id)).toEqual(['O_AS', 'O_AS_IND', 'IND/CS', 'CS.DL', 'CS.DL.5', 'CS.DL.5.4']);
+    // 2026-11-08 (Phase 3): "North West Delhi"/"Bawana" are CS.DL.3/CS.DL.3.4 in the website's
+    // current real data (static/data/subcontinent_districts.json) -- confirmed directly against
+    // that file, where CS.DL.5 is a DIFFERENT district entirely (East Delhi). The CS.DL.5/
+    // CS.DL.5.4 ids this test asserted since the initial commit were already stale before this
+    // phase (a pre-existing, unrelated fixture drift from a since-run India-location-id
+    // regeneration on the website side -- see static/data/*.before_regen_*.json there); this
+    // test walks by NAME ("North West Delhi", "Bawana"), which already correctly resolves to the
+    // real current ids below via the live mocked data this file reads -- only the hardcoded
+    // EXPECTED id strings needed updating to match. Same test intent, same assertions, no new or
+    // weakened coverage.
+    expect(path.map((p) => p.id)).toEqual(['O_AS', 'O_AS_IND', 'IND/CS', 'CS.DL', 'CS.DL.3', 'CS.DL.3.4']);
     const villages = await L.childrenOf(path[5]);
-    expect(villages[0]).toMatchObject({ tier: 'village', id: 'CS.DL.5.4.1', label: 'Village' });
+    expect(villages[0]).toMatchObject({ tier: 'village', id: 'CS.DL.3.4.1', label: 'Village' });
     const full = [...path, villages[0]];
     expect(L.isComplete(full, false)).toBe(true);
     const s = L.toStruct(full);
     expect(s.state).toMatchObject({ id: 'CS.DL', name: 'Delhi' });
-    expect(s.village).toEqual({ id: 'CS.DL.5.4.1', name: 'First Village' });
+    expect(s.village).toEqual({ id: 'CS.DL.3.4.1', name: 'First Village' });
     expect((s.district as Record<string, unknown>).tehsils).toBeUndefined(); // nested lists are not sent
   });
 
@@ -82,5 +92,23 @@ describe.skipIf(!has)('location tree (website data)', () => {
     const path = await walk(['Europe', 'France']);
     expect(L.isComplete(path, false)).toBe(true);
     expect(L.toStruct(path)).toMatchObject({ continent: { id: 'O_EU' }, country: { id: 'O_EU_FRA' } });
+  });
+
+  // 2026-11-08 (Phase 2): the Present Location step (register/public.tsx) no longer passes
+  // onlySubcontinent -- a Global Account's present_location is completed through this EXACT same
+  // unchanged isComplete()/toStruct() logic the birth-location picker already relied on. These
+  // tests exist to pin that contract down explicitly for the present-location use case, not
+  // because the underlying functions are new.
+  it('a present-location registrant outside the Sub-continent completes at the country, with no lower-level fields in the payload at all', async () => {
+    const path = await walk(['Asia', 'Japan']); // onlySub defaults to false -- same as register/public.tsx now
+    expect(L.isComplete(path, false)).toBe(true);
+    const s = L.toStruct(path);
+    expect(s).toMatchObject({ continent: { id: 'O_AS' }, country: { id: 'O_AS_JPN' } });
+    expect(Object.keys(s).sort()).toEqual(['continent', 'country']); // never a fabricated zone/state/district/tehsil/village
+  });
+
+  it('switching the present-location country FROM Japan back TO a Sub-continent country is not complete until the full chain is picked again', async () => {
+    const path = await walk(['Asia', 'India']); // country-only, Subcontinent this time
+    expect(L.isComplete(path, false)).toBe(false); // must keep drilling down to Village
   });
 });

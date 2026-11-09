@@ -51,6 +51,10 @@ export interface Me {
   profile_picture_url?: string | null;
   profile_picture_updated_at?: string;
   is_admin: boolean;
+  /** Server-derived from present_location_struct.country.id -- never decided client-side (website
+   * 2026-11-08, account_access_type()). true when the member's Present Location's country is
+   * outside the 10 Public Account Activation countries; hides the Public tab/timeline. */
+  is_global_account: boolean;
 }
 
 // ---------- auth ----------
@@ -399,7 +403,8 @@ export interface QoinsConfig {
   currency_name: string;
   symbol: string;
   denominations: number[];
-  max_donation: number;
+  /** No longer sent (donations were removed 2026-10-11); unused by the app. */
+  max_donation?: number;
   village_prices: Record<string, unknown>;
   paid_prices: Record<string, Record<string, unknown>>;
 }
@@ -495,6 +500,12 @@ export interface NotificationSummary {
   unread_private: number;
   unread_groups: number;
   pending_requests: number;
+  /** Replies from Admin to questions this member asked (website 2026-10; read in Qmail). */
+  unread_queries?: number;
+  /** Replies from this member's Q-Punch council to messages they sent (read in Qmail). */
+  unread_council?: number;
+  /** Includes unread_queries + unread_council — the app has no Qmail, so the Notifications
+   * screen lists those two as rows that open Qmail on the website. */
   total: number;
   /** Something to do in this month's election (stand in week 1, vote in weeks 2-3), else null. */
   election?: { sign: string; week: number; action: 'stand' | 'vote'; text: string } | null;

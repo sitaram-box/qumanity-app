@@ -1,4 +1,4 @@
-/** Sign in: 9-digit Private ID + 5-digit PIN (5 wrong PINs lock the ID for 15 minutes, enforced by the website). */
+/** Sign in: 9-digit Private ID + 5-character PIN (5 wrong PINs lock the ID for 15 minutes, enforced by the website). */
 
 import { Ionicons } from '@expo/vector-icons';
 import { router } from 'expo-router';
@@ -66,7 +66,7 @@ export default function Login() {
         <Logo size={44} />
       </View>
       <Title>Welcome back</Title>
-      <Lead>Sign in with your 9-digit Private ID and 5-digit PIN — the same as on the website.</Lead>
+      <Lead>Sign in with your 9-digit Private ID and 5-character PIN — the same as on the website.</Lead>
 
       <Label>Private ID</Label>
       <TextInput
@@ -82,7 +82,7 @@ export default function Login() {
       />
 
       <Label>PIN</Label>
-      <CodeInput length={5} secure value={pin} onChange={setPin} autoFocus={false} accessibilityLabel="5-digit PIN" />
+      <CodeInput length={5} secure value={pin} onChange={setPin} autoFocus={false} accessibilityLabel="5-character PIN" />
       <ErrorText>{error}</ErrorText>
 
       <Pressable

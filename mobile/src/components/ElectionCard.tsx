@@ -10,6 +10,7 @@ import { StyleSheet, Text, TextInput, View } from 'react-native';
 import * as Q from '@/api/qumanity';
 import { useApp } from '@/state/app';
 import { colors, fonts, radius, space, tint } from '@/theme';
+import { candidateVoteLabel, isClosedWithNoVotes } from './electionCard.logic';
 import { Button, ErrorText } from './ui';
 
 const ELEMENT_COLOR: Record<string, string> = { Fire: colors.fire, Earth: colors.earth, Air: colors.air, Water: colors.water };
@@ -103,14 +104,22 @@ export function ElectionCard({ election, guide, onChanged }: { election: Q.Elect
       {election.winners && (
         <View style={styles.winners}>
           <Text style={styles.section}>New {election.sign} leaders</Text>
-          {(['male', 'female'] as const).map((g) =>
-            election.winners![g] ? (
-              <Text key={g} style={styles.winner}>
-                🏆 {election.winners![g]} <Text style={styles.dimSmall}>· {g === 'male' ? 'Male' : 'Female'} Leader · {election.winners![`${g}_votes`]} votes</Text>
-              </Text>
-            ) : null,
+          {isClosedWithNoVotes(election) ? (
+            <Text style={styles.dimSmall}>No votes were cast this cycle — no leader was elected.</Text>
+          ) : (
+            <>
+              {(['male', 'female'] as const).map((g) =>
+                election.winners![g] ? (
+                  <Text key={g} style={styles.winner}>
+                    🏆 {election.winners![g]} <Text style={styles.dimSmall}>· {g === 'male' ? 'Male' : 'Female'} Leader · {election.winners![`${g}_votes`]} votes</Text>
+                  </Text>
+                ) : (
+                  <Text key={g} style={styles.dimSmall}>No {g === 'male' ? 'male' : 'female'} leader this cycle (no candidate stood).</Text>
+                ),
+              )}
+              <Text style={styles.dimSmall}>Term of work: {short(election.winners.term_start)} {election.winners.term_start.slice(0, 4)} – {short(election.winners.term_end)} {election.winners.term_end.slice(0, 4)} (1 year)</Text>
+            </>
           )}
-          <Text style={styles.dimSmall}>Term of work: {short(election.winners.term_start)} {election.winners.term_start.slice(0, 4)} – {short(election.winners.term_end)} {election.winners.term_end.slice(0, 4)} (1 year)</Text>
         </View>
       )}
 
@@ -130,7 +139,7 @@ export function ElectionCard({ election, guide, onChanged }: { election: Q.Elect
                   <View style={{ flex: 1 }}>
                     <Text style={styles.candName}>
                       {c.name}
-                      {c.votes !== null && <Text style={styles.dimSmall}> · {c.votes} votes</Text>}
+                      {candidateVoteLabel(c) && <Text style={styles.dimSmall}> · {candidateVoteLabel(c)}</Text>}
                     </Text>
                     {!!c.reason && <Text style={styles.candText}>“{c.reason}”</Text>}
                     {!!c.changes && <Text style={styles.dimSmall}>Plan: {c.changes}</Text>}

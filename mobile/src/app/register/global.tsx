@@ -1,4 +1,13 @@
-/** Step 2 · Global account: where you were born — anywhere on Earth (inside the Sub-continent, down to the village). */
+/**
+ * Step 2 · Birth Location: where you were born, anywhere on Earth, down to the village if it's
+ * in the Indian Sub-continent.
+ *
+ * Unchanged by Phase 2 (2026-11-08): this screen's own meaning and payload (draft.birth,
+ * birth_location) have never been about account classification -- despite the function name
+ * below, "Global account" here is historical naming for "worldwide picker," not a statement that
+ * registering here makes this a Global Account. Account classification (Public vs Global) is
+ * decided by the server from Present Location (the NEXT step), never from Birth Location.
+ */
 
 import { router } from 'expo-router';
 import { useCallback, useEffect, useState } from 'react';
@@ -23,7 +32,7 @@ export default function GlobalAccount() {
   }, []);
 
   return (
-    <Screen scroll={false} footer={<Button title="Next · Public account" onPress={() => router.push('/register/public')} disabled={!complete} />}>
+    <Screen scroll={false} footer={<Button title="Next · Present Location" onPress={() => router.push('/register/public')} disabled={!complete} />}>
       <Steps at={2} of={4} />
       <Title>Where were you born?</Title>
       <Lead>Your birth place never changes. Your Private ID is kept in your birth village.</Lead>
