@@ -8,6 +8,7 @@ import { currentServer, loadStoredSession, setServer as saveServer, setToken, se
 import type { Place } from '@/api/locations';
 import * as Q from '@/api/qumanity';
 import { setRememberedPublicId } from '@/lib/remembered';
+import type { Religion } from '@/components/registration.logic';
 
 export type Stage = 'loading' | 'signedOut' | 'ready';
 
@@ -20,6 +21,10 @@ export interface Draft {
   gender: 'male' | 'female' | 'both' | '';
   dob: string;
   tob: string;
+  /** "I don't remember my exact birth time": no tob is sent (website tob_unknown). */
+  tobUnknown: boolean;
+  /** Optional, private; '' = not answered. A one-time choice on the server. */
+  religion: Religion;
   language: string;
   email: string;
   phone: string;
@@ -39,6 +44,8 @@ export const emptyDraft: Draft = {
   gender: '',
   dob: '',
   tob: '',
+  tobUnknown: false,
+  religion: '',
   language: 'Hindi',
   email: '',
   phone: '',

@@ -274,3 +274,49 @@ failed** after this sync.
 - Related, not tested: website browser sessions (`login_required`) only check that
   `session["user_id"]` is set, so an already-open browser session of a retired member may have
   the same gap. Website-only; noted for the website fix.
+
+## 2026-11-12 sync: website `99106ce` (production qumanity.in)
+
+Checked against the website's `main` at `99106ce` (production was closed at `0d1b87f` on 2026-11-11;
+`99106ce` adds the Admin Panel LBE). Backend changes since the 2026-11-09 sync, from the code:
+
+- **Retired accounts** (`e045cf1`): an app token for a retired account (`users.is_removed = 1`) now
+  gets `401 {"error": "Please sign in again"}`; browser sessions are redirected to `/login`. The app
+  signs out on any 401 and lands on the Welcome screen (Sign in button) — no app change needed. The
+  checker's old "known gap" INFO line is now a counted check.
+- **Email** (`147f833`, `3a6ecd3`): Resend → SendGrid, website only (admin notifications). No app change.
+- **LBE** (`99106ce`): `/api/admin/lbe/resolve` and `/api/admin/lbe/log-event` are Admin Panel
+  routes. The app has no Admin Panel; **not built in the app** (gap, by design for now).
+- **Qoin reward range**: unchanged in the backend (`qoin_core.REWARD_RANGE_INR`, 1–10 Qoins at
+  Village up to 1,500–2,000 at Earth, since 2026-10-17); `1decd54` only corrected the About page
+  text. The app does not display reward ranges.
+- New pages `/privacy` and `/terms` (website only).
+
+### Registration: now sent by the app
+- **`religion_belief`** (optional, private): one of `hindu, christian, muslim, sikh, buddhist, jain,
+  other, prefer_not_to_say` (`RELIGION_BELIEF_VALUES`); anything else is a 400. Not answered = not
+  sent (stored NULL, can be answered later). **Any saved value is locked** — including
+  "prefer_not_to_say"; changing it needs an Admin request. The app shows single-select chips with
+  that hint (`components/registration.logic.ts`).
+- **`tob_unknown: true`** ("I don't remember my exact birth time"): the app sends no `tob` at all.
+  The server stores 12:00 and `birth_time_known = 0`; the real time can be added later through
+  Admin.
+- `middle_name` (already sent since 2026-10-20).
+- The response has **no `donation` / `donation_error`** (removed from `RegisterResult`).
+
+### Known website bug: provisional locations ("Can't find my Tehsil/Village")
+The provisional location endpoint requires sign-in, but registration is anonymous. The website's
+own "Can't find" button may fail for a new member who registers alone. This needs a website fix
+before the app can use it. (`POST /api/locations/provisional` is `@login_required`, `app.py`;
+registration's `PROV-<n>` ids can only come from that route.) Not offered in the app.
+
+### How this is checked
+- `tools/website-check/check_app_api.py` loads the website **code** and runs on a **temporary copy of
+  the local database** — it creates accounts, posts and votes, so it is never pointed at
+  production. 170 checks, 0 failing, against `99106ce` (2026-11-12).
+- Production is checked **read-only**: `GET /healthz`, `/api/world-data`, `/api/subcontinent`,
+  `/api/subcontinent/districts`, `/api/zodiac/{current,signs,preview}` (all 200), `/api/me` with a
+  fake token → 401, with no credentials → 302 `/login`. Nothing is written.
+- Release builds (`__DEV__ = false`, e.g. an EAS APK) always use `https://qumanity.in`
+  (`api/client.ts` `defaultServer()`); `mobile/.env`'s `EXPO_PUBLIC_API_BASE_URL` only affects
+  Expo Go development and is never uploaded to EAS (gitignored).

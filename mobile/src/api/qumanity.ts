@@ -65,7 +65,12 @@ export interface RegisterBody {
   name: string;
   gender: 'male' | 'female' | 'both';
   dob: string;
-  tob: string;
+  /** HH:MM. Omitted when tob_unknown is true (the server then discards any tob and stores 12:00). */
+  tob?: string;
+  /** "I don't remember my exact birth time" (website 2026-11): users.birth_time_known = 0. */
+  tob_unknown?: boolean;
+  /** Optional, private: one of the 8 RELIGION_BELIEF_VALUES; omitted = not answered. Locked once saved. */
+  religion_belief?: string;
   pin: string;
   language: string;
   email?: string;
@@ -87,8 +92,7 @@ export interface RegisterResult {
   /** null when a helper registered someone else — nobody is signed in. */
   token: string | null;
   assisted?: boolean;
-  donation: unknown;
-  donation_error: string | null;
+  /* donation / donation_error were removed: never sent since payments were removed (2026-10-11). */
   zodiac: { sun_sign: string; sun_element: string; moon_sign: string; ascendant_sign: string };
 }
 export const register = (b: RegisterBody) =>

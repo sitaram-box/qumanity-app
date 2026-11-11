@@ -27,6 +27,7 @@ import {
 } from "@/components/ui";
 import { rememberedId, rememberedPublicId } from "@/lib/remembered";
 import { useApp } from "@/state/app";
+import { birthTimeFields, religionFields, religionLabel } from "@/components/registration.logic";
 import { colors, fonts, radius, space } from "@/theme";
 
 const GENDER = {
@@ -78,7 +79,8 @@ export default function Review() {
         middle_name: draft.middleName || undefined,
         gender: draft.gender as "male" | "female" | "both",
         dob: draft.dob,
-        tob: draft.tob,
+        ...birthTimeFields(draft.tob, draft.tobUnknown),
+        ...religionFields(draft.religion),
         pin: draft.pin,
         language: draft.language,
         email: draft.email || undefined,
@@ -151,9 +153,6 @@ export default function Review() {
             }}
           />
         </View>
-        {result.donation_error && (
-          <Text style={styles.warn}>{result.donation_error}</Text>
-        )}
       </Screen>
     );
   }
@@ -194,9 +193,6 @@ export default function Review() {
             }}
           />
         </View>
-        {result.donation_error && (
-          <Text style={styles.warn}>{result.donation_error}</Text>
-        )}
         <ErrorText>{error}</ErrorText>
         {result.zodiac && (
           <Text style={styles.meta}>
@@ -214,7 +210,10 @@ export default function Review() {
       ? ([["Middle name", draft.middleName]] as [string, string][])
       : []),
     ["Gender", GENDER[draft.gender]],
-    ["Born", `${draft.dob} at ${draft.tob}`],
+    ["Born", draft.tobUnknown ? `${draft.dob} (birth time not known)` : `${draft.dob} at ${draft.tob}`],
+    ...(draft.religion
+      ? ([["Spiritual path", `${religionLabel(draft.religion)} (private)`]] as [string, string][])
+      : []),
     ["Mother tongue", draft.language],
     [
       // 2026-11-08 (Phase 2): "Global account"/"Public account" were never the right words
@@ -374,7 +373,6 @@ const styles = StyleSheet.create({
     fontSize: 34,
     letterSpacing: 3,
   },
-  warn: { color: colors.saffron, fontFamily: fonts.body, marginTop: space.lg },
   meta: {
     color: colors.dim,
     fontFamily: fonts.body,

@@ -257,16 +257,32 @@ check("notification summary carries unread_queries and unread_council, and total
       s == 200 and {"unread_queries", "unread_council"} <= set(ns)
       and ns["total"] == ns["unread_private"] + ns["unread_groups"] + ns["pending_requests"] + ns["unread_queries"] + ns["unread_council"], ns)
 
-# KNOWN BACKEND GAP (reported, not an app check): a retired account (users.is_removed=1) can no
-# longer sign in, but an app token issued before retirement keeps working until it expires
-# (app.py _app_token_auth() checks signature/expiry/PIN, not is_removed). Printed, not counted.
+# Retired accounts (users.is_removed=1): until website e045cf1 (2026-11-09) an app token issued
+# before retirement kept working until it expired; this was printed as an INFO "known gap" line.
+# The website now answers 401, which signs the app out (api/client.ts) -- a counted check since 2026-11-12.
 import sqlite3 as _sq  # noqa: E402
 s, rt = call("POST", "/api/auth/register", body={"name": "Retired Member", "gender": "male", "dob": "1980-08-08", "tob": "08:00", "pin": "13579",
     "language": "Hindi", "birth_location": present, "present_location": present, "client": "app"})
 _c = _sq.connect(str(TMP / "copy.db")); _c.execute("UPDATE users SET is_removed = 1 WHERE id = ?", (rt["user_id"],)); _c.commit(); _c.close()
-_still = call("GET", "/api/me", rt["token"])[0]
-print(f"INFO  KNOWN BACKEND GAP: a retired member's existing app token -> /api/me {_still} "
-      f"({'still signed in -- needs a website fix in _app_token_auth()' if _still == 200 else 'refused -- gap closed'})")
+_still, _body = call("GET", "/api/me", rt["token"])
+check("a retired member's existing app token is refused (401, generic message -> the app signs out)",
+      _still == 401 and _body == {"error": "Please sign in again"}, (_still, _body))
+
+# --- 2026-11-12 registration fields (app now sends both; see components/registration.logic.ts) ---
+# "I don't remember my exact birth time": the app sends tob_unknown=true and NO tob at all.
+s, tu = call("POST", "/api/auth/register", body={"name": "No Birth Time Member", "gender": "female", "dob": "1991-04-04", "pin": "24680",
+    "tob_unknown": True, "religion_belief": "jain",
+    "language": "Hindi", "birth_location": present, "present_location": present, "client": "app"})
+_c = _sq.connect(str(TMP / "copy.db")); _c.row_factory = _sq.Row
+_row = _c.execute("SELECT birth_time_known, religion_belief FROM users WHERE id = ?", (tu.get("user_id"),)).fetchone() if s == 201 else None
+_c.close()
+check("register with tob_unknown=true and no tob (the app's exact shape) -> 201, stored as birth_time_known=0",
+      s == 201 and _row is not None and _row["birth_time_known"] == 0, (s, tu.get("error"), dict(_row) if _row else None))
+check("...and its Spiritual path (religion_belief='jain') is stored on the account",
+      _row is not None and _row["religion_belief"] == "jain", dict(_row) if _row else None)
+s, bad = call("POST", "/api/auth/register", body={"name": "Bad Religion Member", "gender": "male", "dob": "1991-04-04", "tob": "07:00", "pin": "24680",
+    "religion_belief": "zoroastrian", "language": "Hindi", "birth_location": present, "present_location": present, "client": "app"})
+check("an unknown religion_belief value is refused (400)", s == 400, (s, bad))
 s, k = call("GET", "/api/me/kundali", reg.get("token")); check("my Moon-based Kundali (chart + table + dasha)", s == 200 and k.get("chart_svg", "").startswith("<svg") and k.get("table") and k.get("dasha", {}).get("current"), s)
 s, me2 = call("GET", "/api/me", reg.get("token")); check("/api/me has birth_location_struct + preferred_language", "birth_location_struct" in me2 and "preferred_language" in me2)
 s, lg = call("POST", "/api/user/languages", reg.get("token"), {"preferred": "hi"}); check("set preferred language", s == 200 and lg.get("preferred") == "hi", lg)

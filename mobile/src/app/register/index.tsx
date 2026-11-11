@@ -1,8 +1,10 @@
-/** Step 1 · Personal details: name, gender, date & time of birth, mother tongue, optional contact, 5-character PIN (twice). */
+/** Step 1 · Personal details: name, gender, date & time of birth (or "don't remember"), mother tongue, optional private
+ * Spiritual path, optional contact, 5-character PIN (twice). */
 
+import { Ionicons } from '@expo/vector-icons';
 import { router } from 'expo-router';
 import { useEffect, useState } from 'react';
-import { StyleSheet, Text, View } from 'react-native';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { LANGUAGE_GROUPS } from '@shared';
 import { zodiacPreview } from '@/api/qumanity';
 import { CodeInput } from '@/components/CodeInput';
@@ -10,6 +12,7 @@ import { Button, Chip, ErrorText, Field, Label, Lead, Screen, Steps, Title } fro
 import { useApp } from '@/state/app';
 import { colors, fonts, space, type } from '@/theme';
 import { PIN_HINT } from '@/components/pin.logic';
+import { RELIGIONS, RELIGION_HINT, type Religion } from '@/components/registration.logic';
 
 const GENDERS = [
   { value: 'male', label: 'Male' },
@@ -30,6 +33,8 @@ export default function PersonalDetails() {
   const [year, setYear] = useState(draft.dob.slice(0, 4));
   const [hour, setHour] = useState(draft.tob.slice(0, 2));
   const [minute, setMinute] = useState(draft.tob.slice(3, 5));
+  const [tobUnknown, setTobUnknown] = useState(draft.tobUnknown);
+  const [religion, setReligion] = useState<Religion>(draft.religion);
   const [language, setLanguage] = useState(draft.language);
   const [email, setEmail] = useState(draft.email);
   const [phone, setPhone] = useState(draft.phone);
@@ -45,7 +50,7 @@ export default function PersonalDetails() {
   if (name.trim().length < 2) errors.name = 'Enter your full name.';
   if (!gender) errors.gender = 'Choose one.';
   if (!/^\d{4}-\d{2}-\d{2}$/.test(dob) || Number.isNaN(Date.parse(dob)) || dob > new Date().toISOString().slice(0, 10)) errors.dob = 'Enter a valid date of birth.';
-  if (!/^([01]\d|2[0-3]):[0-5]\d$/.test(tob)) errors.tob = 'Enter time of birth as HH:MM (24-hour).';
+  if (!tobUnknown && !/^([01]\d|2[0-3]):[0-5]\d$/.test(tob)) errors.tob = 'Enter time of birth as HH:MM (24-hour).';
   if (email && !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) errors.email = 'That email does not look right.';
   if (pin.length !== 5) errors.pin = 'Choose a 5-character PIN.';
   else if (pin2 !== pin) errors.pin = 'The two PINs do not match.';
@@ -68,7 +73,10 @@ export default function PersonalDetails() {
   function next() {
     setTouched(true);
     if (!valid) return;
-    setDraft({ name: name.trim(), middleName: middleName.trim(), gender, dob, tob, language, email: email.trim(), phone: phone.trim(), pin });
+    setDraft({
+      name: name.trim(), middleName: middleName.trim(), gender, dob, tob: tobUnknown ? '' : tob, tobUnknown, religion,
+      language, email: email.trim(), phone: phone.trim(), pin,
+    });
     router.push('/register/global');
   }
 
@@ -97,11 +105,24 @@ export default function PersonalDetails() {
       <ErrorText>{show('dob')}</ErrorText>
       {sign && <Text style={styles.sign}>{sign}</Text>}
 
-      <View style={styles.row}>
-        <Field label="Hour of birth" value={hour} onChangeText={(t) => setHour(digits(2)(t))} keyboardType="number-pad" placeholder="HH" style={styles.small} />
-        <Field label="Minute" value={minute} onChangeText={(t) => setMinute(digits(2)(t))} keyboardType="number-pad" placeholder="MM" style={styles.small} />
-      </View>
-      <ErrorText>{show('tob')}</ErrorText>
+      {!tobUnknown && (
+        <>
+          <View style={styles.row}>
+            <Field label="Hour of birth" value={hour} onChangeText={(t) => setHour(digits(2)(t))} keyboardType="number-pad" placeholder="HH" style={styles.small} />
+            <Field label="Minute" value={minute} onChangeText={(t) => setMinute(digits(2)(t))} keyboardType="number-pad" placeholder="MM" style={styles.small} />
+          </View>
+          <ErrorText>{show('tob')}</ErrorText>
+        </>
+      )}
+      <Pressable
+        style={styles.check}
+        onPress={() => setTobUnknown(!tobUnknown)}
+        accessibilityRole="checkbox"
+        accessibilityState={{ checked: tobUnknown }}
+      >
+        <Ionicons name={tobUnknown ? 'checkbox' : 'square-outline'} size={22} color={colors.gold} />
+        <Text style={styles.checkText}>I don't remember my exact birth time</Text>
+      </Pressable>
 
       <Label>Mother tongue</Label>
       {LANGUAGE_GROUPS.map((g) => (
@@ -114,6 +135,14 @@ export default function PersonalDetails() {
           </View>
         </View>
       ))}
+
+      <Label>🕉️ Spiritual path (optional — kept private)</Label>
+      <View style={styles.wrap}>
+        {RELIGIONS.map((r) => (
+          <Chip key={r.value} label={r.label} selected={religion === r.value} onPress={() => setReligion(religion === r.value ? '' : r.value)} />
+        ))}
+      </View>
+      <Text style={[type.small, { marginBottom: space.md }]}>{RELIGION_HINT}</Text>
 
       <Field label="Phone (optional, for PIN recovery)" value={phone} onChangeText={setPhone} keyboardType="phone-pad" />
       <Field label="Email (optional, for PIN recovery)" value={email} onChangeText={setEmail} keyboardType="email-address" autoCapitalize="none" error={show('email')} />
@@ -133,6 +162,8 @@ const styles = StyleSheet.create({
   row: { flexDirection: 'row', gap: space.md },
   small: { width: 76, textAlign: 'center' },
   year: { width: 110, textAlign: 'center' },
+  check: { flexDirection: 'row', alignItems: 'center', gap: space.sm, marginBottom: space.lg },
+  checkText: { color: colors.text, fontFamily: fonts.body, flex: 1 },
   sign: { color: colors.gold, fontFamily: fonts.medium, marginBottom: space.lg },
   group: { color: colors.faint, fontFamily: fonts.medium, fontSize: 12, marginBottom: space.sm, textTransform: 'uppercase', letterSpacing: 1 },
 });
