@@ -320,3 +320,20 @@ registration's `PROV-<n>` ids can only come from that route.) Not offered in the
 - Release builds (`__DEV__ = false`, e.g. an EAS APK) always use `https://qumanity.in`
   (`api/client.ts` `defaultServer()`); `mobile/.env`'s `EXPO_PUBLIC_API_BASE_URL` only affects
   Expo Go development and is never uploaded to EAS (gitignored).
+
+## Android APK distribution (2026-11-12)
+
+- **Build**: EAS Build (cloud), `mobile/eas.json` profile `preview` → an installable `.apk`
+  (`distribution: internal`, `android.buildType: apk`). Command, from `mobile/`:
+  `eas build --platform android --profile preview`. No profile sets any `EXPO_PUBLIC_*` value
+  (the unused `EXPO_PUBLIC_AUTH_TEST_MODE` flag was removed 2026-11-12).
+- **Server**: a release build always talks to `https://qumanity.in` (`defaultServer()` in
+  `api/client.ts`); nothing in `mobile/.env` is uploaded to EAS.
+- **Signing**: EAS generates and stores the Android keystore on the first build. Every later APK
+  must be signed with the same key or phones refuse to update — keep a downloaded backup
+  (`eas credentials` → Android → Keystore).
+- **Website dependency (not built yet; website task)**: printed QR codes point to
+  `https://qumanity.in/app`. The website needs (1) the current APK hosted at a stable URL on
+  qumanity.in (e.g. `/app/qumanity.apk`) and (2) a `/app` route that redirects to it. A new APK
+  then only needs the file (or the redirect) replaced — the printed QR code never changes. Until
+  that route exists, `/app` is not live and the QR code must not be printed.
