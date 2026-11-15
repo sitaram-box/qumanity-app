@@ -271,12 +271,12 @@ export default function FamilyTree() {
               <ChatIcon name={unit.name} onPress={() => openChat(unit.group_id)} />
             </View>
             <View style={styles.couple}>
-              <PersonBadge person={unit.husband} size={58} onLink={startLink} />
+              <PersonBadge person={unit.husband} deceased={unit.founder_is_deceased.husband} size={58} onLink={startLink} />
               <Ionicons name="heart" size={18} color={colors.fire} style={{ marginTop: 18 }} />
-              <PersonBadge person={unit.wife} size={58} onLink={startLink} />
+              <PersonBadge person={unit.wife} deceased={unit.founder_is_deceased.wife} size={58} onLink={startLink} />
             </View>
             <Text style={styles.meta}>
-              {unit.members} {unit.members === 1 ? 'member' : 'members'}
+              {memberCount(unit.recursive_member_count)}
               {unit.is_admin ? ' · you are an admin' : ''}
               {unit.is_dormant ? ' · remembered (both founders passed)' : ''}
             </Text>
@@ -351,7 +351,9 @@ export default function FamilyTree() {
           unit?.is_admin
             ? async (uid) => {
                 await Q.familyRemoveMember(unit.group_id, uid);
-                setUnit((u) => (u ? { ...u, members: Math.max(0, u.members - 1) } : u));
+                // Re-read the unit from the server rather than patching a count locally: leaving the
+                // chat doesn't remove anyone from the tree, so the cascade count is the server's call.
+                Q.familyNeighborhood(unit.group_id).then(setUnit, () => undefined);
               }
             : undefined
         }
@@ -360,7 +362,18 @@ export default function FamilyTree() {
   );
 }
 
-function PersonBadge({ person, size, onLink }: { person: Q.FamilyPerson | null; size: number; onLink?: (p: Q.FamilyPerson) => void }) {
+function PersonBadge({
+  person,
+  size,
+  onLink,
+  deceased,
+}: {
+  person: Q.FamilyPerson | null;
+  size: number;
+  onLink?: (p: Q.FamilyPerson) => void;
+  /** For a unit's founders: the unit's own founder_is_deceased flag. Others use person.is_deceased. */
+  deceased?: boolean;
+}) {
   if (!person) {
     return (
       <View style={[styles.badge, { width: size + 28 }]}>
@@ -372,17 +385,19 @@ function PersonBadge({ person, size, onLink }: { person: Q.FamilyPerson | null; 
     );
   }
   // Someone alive who isn't on Qumanity yet can be linked to their real account.
-  const linkable = !!onLink && !person.claimed && !person.is_deceased;
+  const dead = deceased ?? person.is_deceased;
+  const linkable = !!onLink && !person.claimed && !dead;
   const body = (
     <>
       <View style={linkable ? [styles.dashed, { borderRadius: (size + 8) / 2 }] : undefined}>
         <Avatar user={person} size={size} color={person.is_viewer ? colors.gold : undefined} />
       </View>
       <Text style={styles.badgeName} numberOfLines={2}>
-        {person.is_deceased ? '✝ ' : ''}
         {person.name}
       </Text>
-      {person.is_viewer ? (
+      {dead ? (
+        <Text style={styles.deceasedTag}>🕊️ Deceased</Text>
+      ) : person.is_viewer ? (
         <Text style={styles.youTag}>You</Text>
       ) : linkable ? (
         <Text style={styles.linkTag}>Tap to link</Text>
@@ -404,7 +419,7 @@ function PersonBadge({ person, size, onLink }: { person: Q.FamilyPerson | null; 
     );
   }
   return (
-    <View style={[styles.badge, { width: size + 34 }, person.is_deceased && { opacity: 0.55 }]} accessibilityLabel={`${person.name}${person.is_deceased ? ', passed away' : ''}`}>
+    <View style={[styles.badge, { width: size + 34 }, dead && { opacity: 0.55 }]} accessibilityLabel={`${person.name}${dead ? ', passed away' : ''}`}>
       {body}
     </View>
   );
@@ -425,25 +440,53 @@ function UnitCard({ unit, label, wide, onPress, onChat }: { unit: Q.FamilyUnitBr
       onPress={onPress}
       style={({ pressed }) => [styles.unit, wide ? { marginTop: space.sm } : { flex: 1 }, unit.is_dormant && { opacity: 0.55 }, pressed && { backgroundColor: colors.panelRaised }]}
       accessibilityRole="button"
-      accessibilityLabel={`Open ${unit.name}`}
+      accessibilityLabel={`Open ${unit.name}, ${memberCount(unit.recursive_member_count)}${deceasedNote(unit)}`}
     >
       {label && <Text style={styles.unitLabel}>{label}</Text>}
       <View style={styles.unitTop}>
         <View style={{ flexDirection: 'row' }}>
-          {unit.husband && <Avatar user={unit.husband} size={30} />}
+          {unit.husband && <FounderAvatar person={unit.husband} deceased={unit.founder_is_deceased.husband} />}
           {unit.wife && (
             <View style={{ marginLeft: unit.husband ? -8 : 0 }}>
-              <Avatar user={unit.wife} size={30} />
+              <FounderAvatar person={unit.wife} deceased={unit.founder_is_deceased.wife} />
             </View>
           )}
         </View>
-        <Text style={styles.unitName} numberOfLines={2}>
-          {unit.name}
-        </Text>
+        <View style={{ flex: 1 }}>
+          <Text style={styles.unitName} numberOfLines={2}>
+            {unit.name}
+          </Text>
+          <Text style={styles.metaSmall}>{memberCount(unit.recursive_member_count)}</Text>
+        </View>
         {onChat && <ChatIcon name={unit.name} onPress={onChat} />}
         <Ionicons name="chevron-forward" size={16} color={colors.faint} />
       </View>
     </Pressable>
+  );
+}
+
+/** "1 member" / "N members" — always from the website's cascade-aware recursive_member_count. */
+function memberCount(n: number): string {
+  return `${n} ${n === 1 ? 'member' : 'members'}`;
+}
+
+/** Spoken on a unit card: which founder(s) have passed away. */
+function deceasedNote(unit: Q.FamilyUnitBrief): string {
+  const gone = [unit.founder_is_deceased.husband && unit.husband?.name, unit.founder_is_deceased.wife && unit.wife?.name].filter(Boolean);
+  return gone.length ? `; ${gone.join(' and ')} passed away` : '';
+}
+
+/** A founder's small avatar on a unit card, with a 🕊️ marker when they have passed away. */
+function FounderAvatar({ person, deceased }: { person: Q.FamilyPerson; deceased: boolean }) {
+  return (
+    <View style={deceased ? { opacity: 0.6 } : undefined}>
+      <Avatar user={person} size={30} />
+      {deceased && (
+        <View style={styles.dove}>
+          <Text style={styles.doveText}>🕊️</Text>
+        </View>
+      )}
+    </View>
   );
 }
 
@@ -473,7 +516,20 @@ const styles = StyleSheet.create({
   unit: { padding: space.sm, borderRadius: radius.md, backgroundColor: colors.panel, borderWidth: StyleSheet.hairlineWidth, borderColor: colors.line, gap: 4 },
   unitLabel: { color: colors.faint, fontFamily: fonts.bold, fontSize: 10, letterSpacing: 0.5 },
   unitTop: { flexDirection: 'row', alignItems: 'center', gap: space.sm },
-  unitName: { flex: 1, color: colors.text, fontFamily: fonts.medium, fontSize: 13 },
+  unitName: { color: colors.text, fontFamily: fonts.medium, fontSize: 13 },
+  deceasedTag: { color: colors.dim, fontFamily: fonts.medium, fontSize: 10.5 },
+  dove: {
+    position: 'absolute',
+    right: -4,
+    bottom: -4,
+    width: 16,
+    height: 16,
+    borderRadius: 8,
+    backgroundColor: colors.panelRaised,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  doveText: { fontSize: 9 },
   actions: { flexDirection: 'row', gap: space.sm, marginTop: space.lg },
   dashed: { padding: 3, borderWidth: 1.5, borderStyle: 'dashed', borderColor: colors.gold },
   linkTag: { color: colors.gold, fontFamily: fonts.bold, fontSize: 10.5 },

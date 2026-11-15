@@ -696,11 +696,18 @@ export interface FamilyUnitBrief {
   husband: FamilyPerson | null;
   wife: FamilyPerson | null;
   is_dormant: boolean;
+  /** The unit's whole household (website 21d4016 cascade): founders + sons' households
+   * (recursively) + unmarried children, linked or not. THE count to display. */
+  recursive_member_count: number;
+  /** Per founder, live (website 21d4016). Use for the founders' 🕊️ marker. */
+  founder_is_deceased: { husband: boolean; wife: boolean };
   /** On parent units: which founder's birth unit this is. */
   side?: 'husband' | 'wife';
 }
 export interface FamilyNeighborhood extends FamilyUnitBrief {
   is_admin: boolean;
+  /** OLD flat count (approved chat-roster accounts). Kept only for backward compatibility —
+   * DON'T DISPLAY; show `recursive_member_count` instead. */
   members: number;
   unmarried_children: FamilyPerson[];
   parent_groups: FamilyUnitBrief[];
