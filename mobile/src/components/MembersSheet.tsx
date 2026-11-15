@@ -1,11 +1,15 @@
 /**
  * A group's Members list (website social_core.member_display_row): avatar, name, gender, age
- * group, location, Founder/Admin/Member, "You" — founders first, then admins. Used by personal group chats and by
- * Family units. Rows for a hidden identity arrive already masked by the website.
+ * group, location, an Admin (gold) or Member (grey) badge, "You" — admins first. Used by personal
+ * group chats and by Family units. A Family unit's list is its whole tree household (website
+ * fd241f9), so it can include people nobody has claimed yet: no account, so just their initials,
+ * name, gender and "Not on Qumanity yet", and nothing to remove. Rows for a hidden identity
+ * arrive already masked by the website.
  * Pass `onRemove` (Family units, when you are an admin) to show a Remove button per member; the
  * website refuses founders and explains any other refusal, which is shown under that member.
- * Family units pass `showMemberCount={false}`: this list is the chat roster, not the family, so its
- * length would contradict the family's own count (recursive_member_count) shown elsewhere.
+ * Family units pass `showMemberCount={false}` (added when this list was only the chat roster, whose
+ * length contradicted the family count; since website fd241f9 the two match, and the count stays
+ * in the chat header / unit card rather than here).
  */
 
 import { Fragment, useEffect, useState } from 'react';
@@ -16,8 +20,12 @@ import { Avatar } from './Avatar';
 import { BottomSheet } from './BottomSheet';
 
 const GENDER_LABEL: Record<string, string> = { male: 'Male', female: 'Female', both: 'Third gender' };
-const ROLE_LABEL = { founder: 'Founder', admin: 'Admin', member: 'Member' } as const;
-const ROLE_ORDER = { founder: 0, admin: 1, member: 2 } as const;
+const ROLE_LABEL = { admin: 'Admin', member: 'Member' } as const;
+const ROLE_ORDER = { admin: 0, member: 1 } as const;
+/** The Remove button is hidden for now (2026-11-16): a Family unit's list is its whole tree
+ * household, but removing only takes someone out of the chat — they stayed listed, which was
+ * confusing. A proper "Remove from Tree" comes later; the removal code below stays for it. */
+const SHOW_REMOVE = false;
 /** The website's `role`; an older website without it falls back to is_admin. */
 const roleOf = (m: MemberRow) => m.role ?? (m.is_admin ? 'admin' : 'member');
 
@@ -51,14 +59,15 @@ export function MembersSheet({
   }, [members]);
 
   async function remove(m: MemberRow) {
-    if (!onRemove) return;
-    setBusy(m.user_id);
+    const uid = m.user_id;
+    if (!onRemove || uid === null) return; // a placeholder has no account to remove
+    setBusy(uid);
     setRowError(null);
     try {
-      await onRemove(m.user_id);
-      setList((l) => (l ?? []).filter((x) => x.user_id !== m.user_id));
+      await onRemove(uid);
+      setList((l) => (l ?? []).filter((x) => x.user_id !== uid));
     } catch (e) {
-      setRowError({ id: m.user_id, text: (e as Error).message });
+      setRowError({ id: uid, text: (e as Error).message });
     } finally {
       setBusy(null);
     }
@@ -92,7 +101,7 @@ export function MembersSheet({
       <ScrollView keyboardShouldPersistTaps="handled">
         {list === null && <Text style={styles.meta}>Loading…</Text>}
         {sorted.map((m) => (
-          <Fragment key={m.user_id}>
+          <Fragment key={m.user_id !== null ? `u${m.user_id}` : `n${m.node_id ?? m.name}`}>
           <View style={styles.row} accessibilityLabel={`${m.name}, ${ROLE_LABEL[roleOf(m)]}`}>
             <Avatar user={m} size={42} />
             <View style={{ flex: 1 }}>
@@ -101,14 +110,23 @@ export function MembersSheet({
                 {m.you ? <Text style={styles.you}> · You</Text> : null}
               </Text>
               <Text style={styles.meta} numberOfLines={1}>
-                {[m.gender ? GENDER_LABEL[m.gender] ?? m.gender : null, m.age_group, m.present_location].filter(Boolean).join(' · ')}
+                {[
+                  m.gender ? GENDER_LABEL[m.gender] ?? m.gender : null,
+                  m.age_group,
+                  m.present_location,
+                  m.claimed === false ? 'Not on Qumanity yet' : null,
+                ]
+                  .filter(Boolean)
+                  .join(' · ')}
               </Text>
             </View>
-            <View style={[styles.role, roleOf(m) !== 'member' && { backgroundColor: tint(colors.gold) }]}>
-              <Text style={[styles.roleText, roleOf(m) !== 'member' && { color: colors.gold }]}>{ROLE_LABEL[roleOf(m)]}</Text>
+            {/* Admin: gold. Member: grey. */}
+            <View style={[styles.role, roleOf(m) === 'admin' && { backgroundColor: tint(colors.gold) }]}>
+              <Text style={[styles.roleText, roleOf(m) === 'admin' && { color: colors.gold }]}>{ROLE_LABEL[roleOf(m)]}</Text>
             </View>
-            {/* The website refuses to remove a founder; anyone else (admin or member) can be removed. */}
-            {onRemove && !m.you && roleOf(m) !== 'founder' && (
+            {/* Only someone with an account can be removed (a placeholder has none). The website still
+                refuses a unit's founder and explains why, shown under that member. */}
+            {SHOW_REMOVE && onRemove && !m.you && m.user_id !== null && (
               <Pressable
                 onPress={() => confirmRemove(m)}
                 disabled={busy !== null}

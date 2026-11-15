@@ -667,17 +667,22 @@ export const uploadProfilePicture = (file: { uri: string; name: string; type: st
 /** One row of a group's Members list (social_core.member_display_row) — personal group chats
  * and Family units alike. Name/location are already masked for a hidden identity. */
 export interface MemberRow {
-  user_id: number;
+  /** null for a Family Tree placeholder nobody has claimed yet (no account behind the name). */
+  user_id: number | null;
+  /** Set on unclaimed Family Tree rows (website fd241f9); claimed rows carry user_id instead. */
+  node_id?: number | null;
   name: string;
   gender: Gender | null;
-  age_group: string;
+  age_group: string | null;
   present_location: string | null;
   profile_picture_url: string | null;
   is_admin: boolean;
-  /** Website 2026-10-27: the honest label. A unit's creator can be an admin without being a
-   * founder (husband/wife), so is_admin alone showed a plain child as "Admin". */
-  role?: 'founder' | 'admin' | 'member';
+  /** Website fd241f9: strictly 'admin' or 'member' — admin rights over THIS group. ('founder' is
+   * retired: it showed for any husband/wife, even in units where they held no admin rights.) */
+  role?: 'admin' | 'member';
   you: boolean;
+  /** false = a Family Tree placeholder with no account yet; true for every real member. */
+  claimed: boolean;
 }
 
 export interface FamilyPerson {
