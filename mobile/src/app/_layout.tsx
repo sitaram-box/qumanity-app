@@ -107,6 +107,8 @@ function Navigator({ ready }: { ready: boolean }) {
         <Stack.Screen name="election-history" />
         <Stack.Screen name="sky" />
         <Stack.Screen name="family-tree" />
+        {/* Pinch/drag canvas: no edge-swipe back (it would fight a drag); the Back button works. */}
+        <Stack.Screen name="family-whole-tree" options={{ gestureEnabled: false }} />
         <Stack.Screen name="family-activate" />
         <Stack.Screen name="profile-change" />
         <Stack.Screen name="settings" />

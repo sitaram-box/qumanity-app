@@ -26,7 +26,7 @@
 
 import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect, useRouter } from 'expo-router';
-import { useCallback, useState } from 'react';
+import { useCallback, useRef, useState } from 'react';
 import { ActivityIndicator, Alert, Modal, Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { ApiError } from '@/api/client';
 import * as Q from '@/api/qumanity';
@@ -63,6 +63,10 @@ export default function FamilyTree() {
   // The person sheet (tap anyone in the unit) and a one-line result after adding someone
   const [sheet, setSheet] = useState<{ person: Q.FamilyPerson; role: Role; deceased: boolean } | null>(null);
   const [notice, setNotice] = useState<string>();
+  // Set once the first unit opens. The focus effect below runs again whenever you come back to this
+  // screen (from Whole tree, a chat…); its closure only ever sees the first `unit` (null), so without
+  // this it would jump back to your own unit and drop the trail.
+  const started = useRef(false);
 
   const open = useCallback(async (id: number, name: string, mode: 'push' | 'reset' | 'back' = 'push') => {
     setLoading(true);
@@ -92,7 +96,10 @@ export default function FamilyTree() {
           }
           setStatus(s);
           const mine = s.groups.find((g) => g.is_founder) ?? s.groups[0];
-          if (mine && !unit) open(mine.id, mine.name, 'reset');
+          if (mine && !started.current) {
+            started.current = true;
+            open(mine.id, mine.name, 'reset');
+          }
         } catch (e) {
           setError((e as Error).message);
         }
@@ -152,6 +159,13 @@ export default function FamilyTree() {
   // A unit you're an admin of: the one on screen (freshest), else from your status list.
   const adminOf = (groupId: number) =>
     unit && groupId === unit.group_id ? unit.is_admin : !!status?.groups.find((g) => g.id === groupId)?.is_admin;
+
+  // Whole tree, centred on you if you're in the unit on screen, else on one of its founders.
+  function openWholeTree() {
+    if (!unit) return;
+    const centre = [unit.husband, unit.wife, ...unit.unmarried_children].find((p) => p?.is_viewer) ?? unit.husband ?? unit.wife;
+    if (centre) router.push({ pathname: '/family-whole-tree', params: { node: String(centre.id), name: centre.is_viewer ? 'you' : centre.name } });
+  }
 
   function openPerson(person: Q.FamilyPerson, role: Role, deceased: boolean) {
     setNotice(undefined);
@@ -230,7 +244,18 @@ export default function FamilyTree() {
 
   return (
     <Screen>
-      <BackHeader title="Family Tree" subtitle={unit?.name} />
+      <BackHeader
+        title="Family Tree"
+        subtitle={unit?.name}
+        right={
+          unit && !outside ? (
+            <Pressable onPress={openWholeTree} accessibilityRole="button" accessibilityLabel="Whole tree" hitSlop={10} style={styles.wholeBtn}>
+              <Ionicons name="git-network-outline" size={16} color={colors.gold} />
+              <Text style={styles.wholeText}>Whole tree</Text>
+            </Pressable>
+          ) : undefined
+        }
+      />
 
       {status.groups.length > 1 && (
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chips}>
@@ -605,6 +630,8 @@ const styles = StyleSheet.create({
   sheetHead: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   sheetTitle: { flex: 1, color: colors.text, fontFamily: fonts.bold, fontSize: 17 },
   close: { color: colors.gold, fontFamily: fonts.medium },
+  wholeBtn: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: space.sm },
+  wholeText: { color: colors.gold, fontFamily: fonts.medium, fontSize: 13 },
   metaText: { color: colors.dim, fontFamily: fonts.body, fontSize: 13, lineHeight: 19 },
   leaveMsg: { fontFamily: fonts.medium, fontSize: 13, textAlign: 'center', marginTop: space.md },
   ok: { color: colors.earth, fontFamily: fonts.medium, fontSize: 13, textAlign: 'center' },

@@ -757,6 +757,22 @@ export interface FamilyNewPerson {
  * `group_id` (child only): which of the person's units the child belongs to — the one in view. */
 export const familyAddRelative = (kind: 'child' | 'sibling' | 'spouse', nodeId: number, body: FamilyNewPerson & { group_id?: number }) =>
   api<{ node_id?: number; group_id?: number }>(`/api/family/person/${nodeId}/${kind}`, { body });
+/** One person's own family as the tree knows it (website family_core.cascade_for_node): their
+ * parents' unit and siblings, both grandparent units (tagged paternal / maternal), their spouse,
+ * unmarried children and married children's units. Read-only, one generation each way of the
+ * parents / children. 404 unless you're a member of a unit this person belongs to. */
+export interface FamilyCascade {
+  node: FamilyPerson;
+  birth_group_id: number | null;
+  parents: { father: FamilyPerson | null; mother: FamilyPerson | null } | null;
+  siblings: FamilyPerson[];
+  grandparent_groups: (Omit<FamilyUnitBrief, 'side'> & { side: 'paternal' | 'maternal' })[];
+  marital_group_id: number | null;
+  spouse: FamilyPerson | null;
+  children: FamilyPerson[];
+  child_groups: FamilyUnitBrief[];
+}
+export const familyCascade = (nodeId: number) => api<FamilyCascade>(`/api/family/person/${nodeId}/cascade`);
 /** Add a founder's parents (one side of a unit), as the wizard does: at least one name. */
 export const familyAddParents = (groupId: number, side: 'husband' | 'wife', father: FamilySlot | null, mother: FamilySlot | null) =>
   api<{ parent_group_id?: number }>(`/api/family/node/${groupId}/add-parents`, { body: { side, father, mother } });
