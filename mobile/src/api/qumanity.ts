@@ -689,6 +689,9 @@ export interface FamilyPerson {
   is_deceased: boolean;
   is_viewer: boolean;
   profile_picture_url: string | null;
+  /** e.g. "Father", "Son", "Spouse" (website family_core._relationship_label); null for yourself
+   * or a relative outside the named list. */
+  relationship_to_viewer?: string | null;
 }
 export interface FamilyUnitBrief {
   group_id: number;
@@ -742,6 +745,21 @@ export const familyLinkNode = (nodeId: number, publicId: string) =>
 /** Admins only; a founder can't be removed. The removed member's place in the tree stays. */
 export const familyRemoveMember = (groupId: number, user_id: number) =>
   api<{ status: 'removed' }>(`/api/family-groups/${groupId}/remove-member`, { body: { user_id } });
+
+/** A new person added by hand: an unlinked placeholder ("Tap to link") until someone links them. */
+export interface FamilyNewPerson {
+  name: string;
+  gender?: Gender;
+  is_deceased?: boolean;
+}
+/** Add a child / sibling / spouse to a person in the tree (website 2026-11-01 profile-card routes).
+ * The server checks who may do it (admin of the right unit) and explains any refusal.
+ * `group_id` (child only): which of the person's units the child belongs to — the one in view. */
+export const familyAddRelative = (kind: 'child' | 'sibling' | 'spouse', nodeId: number, body: FamilyNewPerson & { group_id?: number }) =>
+  api<{ node_id?: number; group_id?: number }>(`/api/family/person/${nodeId}/${kind}`, { body });
+/** Add a founder's parents (one side of a unit), as the wizard does: at least one name. */
+export const familyAddParents = (groupId: number, side: 'husband' | 'wife', father: FamilySlot | null, mother: FamilySlot | null) =>
+  api<{ parent_group_id?: number }>(`/api/family/node/${groupId}/add-parents`, { body: { side, father, mother } });
 
 // ---------- Family Tree activation (website family.js wizard; family_core.activate/marry_timeline) ----------
 export type Relationship = 'single' | 'married' | 'separated' | 'divorced' | 'widowed';

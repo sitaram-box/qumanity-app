@@ -16,9 +16,12 @@
  *
  * Chat opens the unit's own group chat (chat/family/<id>) — from the Chat button, or the chat icon
  * on this unit's card and on any neighbouring unit you're a member of (tapping the card itself
- * still moves through the tree). Any person in the tree who isn't on
- * Qumanity yet ("not joined yet") can be tapped to link them to their real account by Public ID —
- * the website lets an admin of a unit that person belongs to do this, and explains otherwise.
+ * still moves through the tree). Tapping any person opens their card (components/FamilyPersonSheet):
+ * who they are, "Link to account" for someone alive who isn't on Qumanity yet (by Public ID), and
+ * "Add family member" — Child / Sibling / Spouse / Parents, only the options the website accepts for
+ * them (components/familyAdd.logic.ts). The website lets an admin of the right unit do these, and
+ * explains otherwise. Counts are the website's cascade-aware recursive_member_count; a deceased
+ * person shows 🕊️.
  */
 
 import { Ionicons } from '@expo/vector-icons';
@@ -33,6 +36,8 @@ import { PublicIdLookup } from '@/components/ProfileCard';
 import { PublicIdInvite } from '@/components/PublicIdInvite';
 import { BackHeader, Button, ErrorText, Lead, Screen, SectionTitle } from '@/components/ui';
 import { colors, fonts, radius, space, timelineColors, tint } from '@/theme';
+import { FamilyPersonSheet } from '@/components/FamilyPersonSheet';
+import { addOptions, type Role } from '@/components/familyAdd.logic';
 
 const ACCENT = timelineColors.personal;
 
@@ -55,6 +60,9 @@ export default function FamilyTree() {
   const [linkFound, setLinkFound] = useState<Q.FoundPerson | null>(null);
   const [linkBusy, setLinkBusy] = useState(false);
   const [linkErr, setLinkErr] = useState<string>();
+  // The person sheet (tap anyone in the unit) and a one-line result after adding someone
+  const [sheet, setSheet] = useState<{ person: Q.FamilyPerson; role: Role; deceased: boolean } | null>(null);
+  const [notice, setNotice] = useState<string>();
 
   const open = useCallback(async (id: number, name: string, mode: 'push' | 'reset' | 'back' = 'push') => {
     setLoading(true);
@@ -140,6 +148,28 @@ export default function FamilyTree() {
   // Units you are an approved member of: only these can be chatted in (others answer 404).
   const memberOf = new Set(status?.groups.map((g) => g.id) ?? []);
   const openChat = (groupId: number) => router.push({ pathname: '/chat/[kind]/[id]', params: { kind: 'family', id: String(groupId) } });
+
+  // A unit you're an admin of: the one on screen (freshest), else from your status list.
+  const adminOf = (groupId: number) =>
+    unit && groupId === unit.group_id ? unit.is_admin : !!status?.groups.find((g) => g.id === groupId)?.is_admin;
+
+  function openPerson(person: Q.FamilyPerson, role: Role, deceased: boolean) {
+    setNotice(undefined);
+    setSheet({ person, role, deceased });
+  }
+
+  // After an add: re-read this unit (and your unit list — a new spouse can found a new unit).
+  async function afterAdd(message: string) {
+    setSheet(null);
+    setNotice(message);
+    if (!unit) return;
+    try {
+      setUnit(await Q.familyNeighborhood(unit.group_id));
+      setStatus(await Q.familyStatus());
+    } catch (e) {
+      setError((e as Error).message);
+    }
+  }
 
   function startLink(p: Q.FamilyPerson) {
     setLinkFor(p);
@@ -271,9 +301,14 @@ export default function FamilyTree() {
               <ChatIcon name={unit.name} onPress={() => openChat(unit.group_id)} />
             </View>
             <View style={styles.couple}>
-              <PersonBadge person={unit.husband} deceased={unit.founder_is_deceased.husband} size={58} onLink={startLink} />
+              <PersonBadge
+                person={unit.husband}
+                deceased={unit.founder_is_deceased.husband}
+                size={58}
+                onPress={(p) => openPerson(p, 'husband', unit.founder_is_deceased.husband)}
+              />
               <Ionicons name="heart" size={18} color={colors.fire} style={{ marginTop: 18 }} />
-              <PersonBadge person={unit.wife} deceased={unit.founder_is_deceased.wife} size={58} onLink={startLink} />
+              <PersonBadge person={unit.wife} deceased={unit.founder_is_deceased.wife} size={58} onPress={(p) => openPerson(p, 'wife', unit.founder_is_deceased.wife)} />
             </View>
             <Text style={styles.meta}>
               {memberCount(unit.recursive_member_count)}
@@ -289,7 +324,7 @@ export default function FamilyTree() {
               {unit.unmarried_children.length > 0 && (
                 <View style={styles.childRow}>
                   {unit.unmarried_children.map((c) => (
-                    <PersonBadge key={c.id} person={c} size={46} onLink={startLink} />
+                    <PersonBadge key={c.id} person={c} size={46} onPress={(p) => openPerson(p, 'child', p.is_deceased)} />
                   ))}
                 </View>
               )}
@@ -340,6 +375,21 @@ export default function FamilyTree() {
         </View>
       </Modal>
 
+      <FamilyPersonSheet
+        person={sheet?.person ?? null}
+        deceased={!!sheet?.deceased}
+        options={sheet && unit ? addOptions(sheet.role, unit, adminOf) : []}
+        canLink={!!sheet && !sheet.person.claimed && !sheet.deceased}
+        onLink={() => {
+          const p = sheet?.person;
+          setSheet(null);
+          if (p) startLink(p);
+        }}
+        onClose={() => setSheet(null)}
+        onAdded={afterAdd}
+      />
+
+      {notice && <Text style={[styles.leaveMsg, { color: colors.earth }]}>{notice}</Text>}
       {leaveMsg && <Text style={[styles.leaveMsg, { color: leaveMsg.ok ? colors.earth : colors.danger }]}>{leaveMsg.text}</Text>}
 
       <MembersSheet
@@ -365,12 +415,13 @@ export default function FamilyTree() {
 function PersonBadge({
   person,
   size,
-  onLink,
+  onPress,
   deceased,
 }: {
   person: Q.FamilyPerson | null;
   size: number;
-  onLink?: (p: Q.FamilyPerson) => void;
+  /** Opens the person sheet (who they are, Link to account, Add family member). */
+  onPress?: (p: Q.FamilyPerson) => void;
   /** For a unit's founders: the unit's own founder_is_deceased flag. Others use person.is_deceased. */
   deceased?: boolean;
 }) {
@@ -384,9 +435,9 @@ function PersonBadge({
       </View>
     );
   }
-  // Someone alive who isn't on Qumanity yet can be linked to their real account.
+  // Someone alive who isn't on Qumanity yet can be linked to their real account (from the sheet).
   const dead = deceased ?? person.is_deceased;
-  const linkable = !!onLink && !person.claimed && !dead;
+  const linkable = !!onPress && !person.claimed && !dead;
   const body = (
     <>
       <View style={linkable ? [styles.dashed, { borderRadius: (size + 8) / 2 }] : undefined}>
@@ -406,20 +457,22 @@ function PersonBadge({
       )}
     </>
   );
-  if (linkable) {
+  const spoken = `${person.name}${dead ? ', passed away' : linkable ? ', not on Qumanity yet' : ''}`;
+  if (onPress) {
     return (
       <Pressable
-        onPress={() => onLink!(person)}
-        style={({ pressed }) => [styles.badge, { width: size + 34 }, pressed && { opacity: 0.7 }]}
+        onPress={() => onPress(person)}
+        style={({ pressed }) => [styles.badge, { width: size + 34 }, dead && { opacity: 0.55 }, pressed && { opacity: 0.7 }]}
         accessibilityRole="button"
-        accessibilityLabel={`${person.name}, not on Qumanity yet. Tap to link to their account`}
+        accessibilityLabel={spoken}
+        accessibilityHint={linkable ? 'Opens their card: link their account or add a relative' : 'Opens their card'}
       >
         {body}
       </Pressable>
     );
   }
   return (
-    <View style={[styles.badge, { width: size + 34 }, dead && { opacity: 0.55 }]} accessibilityLabel={`${person.name}${dead ? ', passed away' : ''}`}>
+    <View style={[styles.badge, { width: size + 34 }, dead && { opacity: 0.55 }]} accessibilityLabel={spoken}>
       {body}
     </View>
   );
@@ -452,16 +505,28 @@ function UnitCard({ unit, label, wide, onPress, onChat }: { unit: Q.FamilyUnitBr
             </View>
           )}
         </View>
-        <View style={{ flex: 1 }}>
-          <Text style={styles.unitName} numberOfLines={2}>
-            {unit.name}
-          </Text>
-          <Text style={styles.metaSmall}>{memberCount(unit.recursive_member_count)}</Text>
-        </View>
+        {/* Full-width cards keep name + count in this row; half-width parent cards (two side by side)
+            stack them below, where they get the card's whole width. */}
+        {wide ? <UnitText unit={unit} /> : <View style={{ flex: 1 }} />}
         {onChat && <ChatIcon name={unit.name} onPress={onChat} />}
         <Ionicons name="chevron-forward" size={16} color={colors.faint} />
       </View>
+      {!wide && <UnitText unit={unit} />}
     </Pressable>
+  );
+}
+
+/** A unit card's name (up to two lines) and its cascade member count (one line). */
+function UnitText({ unit }: { unit: Q.FamilyUnitBrief }) {
+  return (
+    <View style={{ flex: 1 }}>
+      <Text style={styles.unitName} numberOfLines={2}>
+        {unit.name}
+      </Text>
+      <Text style={styles.metaSmall} numberOfLines={1}>
+        {memberCount(unit.recursive_member_count)}
+      </Text>
+    </View>
   );
 }
 
@@ -518,10 +583,12 @@ const styles = StyleSheet.create({
   unitTop: { flexDirection: 'row', alignItems: 'center', gap: space.sm },
   unitName: { color: colors.text, fontFamily: fonts.medium, fontSize: 13 },
   deceasedTag: { color: colors.dim, fontFamily: fonts.medium, fontSize: 10.5 },
+  // Top-left: the bottom-right corner holds the avatar's own gender badge, and on a couple the
+  // wife's avatar overlaps the husband's right side (Stage 2 visual-check fix).
   dove: {
     position: 'absolute',
-    right: -4,
-    bottom: -4,
+    left: -4,
+    top: -4,
     width: 16,
     height: 16,
     borderRadius: 8,
