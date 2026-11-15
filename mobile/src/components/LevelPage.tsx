@@ -6,6 +6,7 @@
  */
 
 import { Ionicons } from '@expo/vector-icons';
+import * as Clipboard from 'expo-clipboard';
 import { router } from 'expo-router';
 import { useEffect, useMemo, useState } from 'react';
 import { Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
@@ -92,10 +93,14 @@ export function LevelPage({ accent, levels }: { title?: string; note?: string; a
             <Ionicons name={level === 'earth' ? 'earth' : level === 'village' ? 'home' : 'location'} size={17} color={accent} />
           </View>
           <View style={{ flex: 1 }}>
-            <Text style={styles.placeName} numberOfLines={1}>
+            {/* Up to two lines, so long names ("Rohini Sector 24", "North West Delhi") are readable. */}
+            <Text style={styles.placeName} numberOfLines={2}>
               {placeName}
             </Text>
-            <Text style={styles.placeLevel}>{LABEL[level]} group</Text>
+            <Text style={styles.placeLevel} numberOfLines={1}>
+              {LABEL[level]} group
+            </Text>
+            {placeId && level !== 'earth' ? <PlaceId id={placeId} /> : null}
           </View>
           <Stat icon="people" value={members} label="members" />
           <Stat qoin value={wallet} label="Qoins" />
@@ -139,6 +144,30 @@ function Stat({ icon, qoin, value, label }: { icon?: React.ComponentProps<typeof
   );
 }
 
+/** The place's Location ID (e.g. CS.DL.3.4.1A), muted, with one-tap copy to share or search. */
+function PlaceId({ id }: { id: string }) {
+  const [copied, setCopied] = useState(false);
+  useEffect(() => {
+    if (!copied) return;
+    const t = setTimeout(() => setCopied(false), 1500);
+    return () => clearTimeout(t);
+  }, [copied]);
+  return (
+    <Pressable
+      onPress={() => Clipboard.setStringAsync(id).then(() => setCopied(true), () => undefined)}
+      style={styles.idRow}
+      hitSlop={8}
+      accessibilityRole="button"
+      accessibilityLabel={copied ? 'Location ID copied' : `Copy location ID ${id}`}
+    >
+      <Text style={styles.placeId} numberOfLines={1} selectable>
+        {id}
+      </Text>
+      <Ionicons name={copied ? 'checkmark' : 'copy-outline'} size={12} color={copied ? colors.earth : colors.faint} />
+    </Pressable>
+  );
+}
+
 function Action({ icon, label, onPress }: { icon: React.ComponentProps<typeof Ionicons>['name']; label: string; onPress: () => void }) {
   return (
     <Pressable onPress={onPress} style={({ pressed }) => [styles.action, pressed && { backgroundColor: colors.line }]} accessibilityRole="button" accessibilityLabel={label}>
@@ -167,8 +196,10 @@ const styles = StyleSheet.create({
   },
   placeTop: { flexDirection: 'row', alignItems: 'center', gap: space.sm },
   placeIcon: { width: 34, height: 34, borderRadius: 10, alignItems: 'center', justifyContent: 'center' },
-  placeName: { color: colors.text, fontFamily: fonts.bold, fontSize: 15.5 },
+  placeName: { color: colors.text, fontFamily: fonts.bold, fontSize: 14.5, lineHeight: 18 },
   placeLevel: { color: colors.faint, fontFamily: fonts.body, fontSize: 11.5, marginTop: 1 },
+  idRow: { flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 2, alignSelf: 'flex-start' },
+  placeId: { color: colors.faint, fontFamily: fonts.medium, fontSize: 10.5, letterSpacing: 0.3 },
   stat: { alignItems: 'flex-end', minWidth: 52 },
   statTop: { flexDirection: 'row', alignItems: 'center', gap: 3 },
   qoin: { fontSize: 11 },

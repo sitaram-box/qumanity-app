@@ -1,6 +1,6 @@
 /**
  * Collective Board for one level (same data and rules as the website board):
- * opens on Live voting; the ❄ Frozen button (bottom-right) switches to frozen
+ * opens on Live voting; the ❄ Frozen button (right of the voting rule) switches to frozen
  * and elevated posts with scores, dates and comments. The message box stays at
  * the bottom: free text in the Village, paid text on Tehsil → Zone.
  */
@@ -54,6 +54,16 @@ export function BoardView({ level, currency }: { level: Q.BoardLevel; currency: 
             ? 'Frozen & elevated · best score first'
             : `Live voting · ${data.window_days} days · lifts at +${data.threshold.toLocaleString()}${data.next ? ` → ${data.next}` : ''}`}
         </Text>
+        {/* In the page flow, not floating: it can never cover a post's vote buttons or the composer. */}
+        <Pressable
+          onPress={() => setFrozen((f) => !f)}
+          style={[styles.toggle, frozen && { backgroundColor: colors.water, borderColor: colors.water }]}
+          hitSlop={6}
+          accessibilityRole="button"
+          accessibilityLabel={frozen ? 'Back to live voting' : 'Show frozen posts'}
+        >
+          <Text style={[styles.toggleText, frozen && { color: colors.onAccent }]}>{frozen ? '← Live' : '❄ Frozen'}</Text>
+        </Pressable>
       </View>
       <FlatList
         data={posts}
@@ -70,7 +80,7 @@ export function BoardView({ level, currency }: { level: Q.BoardLevel; currency: 
             }}
           />
         }
-        contentContainerStyle={{ paddingBottom: 56 }}
+        contentContainerStyle={{ paddingBottom: space.lg }}
         ListEmptyComponent={
           <View style={styles.emptyBox}>
             <Ionicons name={frozen ? 'snow-outline' : 'chatbubbles-outline'} size={28} color={colors.faint} />
@@ -90,14 +100,6 @@ export function BoardView({ level, currency }: { level: Q.BoardLevel; currency: 
           onPosted={load}
         />
       )}
-      <Pressable
-        onPress={() => setFrozen((f) => !f)}
-        style={[styles.fab, { bottom: canWrite ? 78 : 10 }, frozen && { backgroundColor: colors.water, borderColor: colors.water }]}
-        accessibilityRole="button"
-        accessibilityLabel={frozen ? 'Back to live voting' : 'Show frozen posts'}
-      >
-        <Text style={[styles.fabText, frozen && { color: colors.onAccent }]}>{frozen ? '← Live' : '❄ Frozen'}</Text>
-      </Pressable>
     </View>
   );
 }
@@ -355,21 +357,14 @@ const styles = StyleSheet.create({
   composerInput: { maxHeight: 110, minHeight: 22, padding: 0, color: colors.text, fontFamily: fonts.body, fontSize: 14.5 },
   count: { color: colors.faint, fontFamily: fonts.medium, fontSize: 10.5, alignSelf: 'flex-end', marginTop: 2 },
   send: { width: 42, height: 42, borderRadius: 21, backgroundColor: colors.gold, alignItems: 'center', justifyContent: 'center' },
-  fab: {
-    position: 'absolute',
-    right: 0,
-    height: 32,
-    paddingHorizontal: 12,
+  toggle: {
+    height: 26,
+    paddingHorizontal: 10,
     borderRadius: radius.pill,
     justifyContent: 'center',
     backgroundColor: colors.panelRaised,
     borderWidth: 1,
     borderColor: colors.line,
-    shadowColor: '#000',
-    shadowOpacity: 0.35,
-    shadowRadius: 6,
-    shadowOffset: { width: 0, height: 3 },
-    elevation: 4,
   },
-  fabText: { color: colors.text, fontFamily: fonts.bold, fontSize: 12 },
+  toggleText: { color: colors.text, fontFamily: fonts.bold, fontSize: 11.5 },
 });
