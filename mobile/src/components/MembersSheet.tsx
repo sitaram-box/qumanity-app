@@ -4,6 +4,8 @@
  * Family units. Rows for a hidden identity arrive already masked by the website.
  * Pass `onRemove` (Family units, when you are an admin) to show a Remove button per member; the
  * website refuses founders and explains any other refusal, which is shown under that member.
+ * Family units pass `showMemberCount={false}`: this list is the chat roster, not the family, so its
+ * length would contradict the family's own count (recursive_member_count) shown elsewhere.
  */
 
 import { Fragment, useEffect, useState } from 'react';
@@ -25,6 +27,7 @@ export function MembersSheet({
   members,
   footer,
   onRemove,
+  showMemberCount = true,
 }: {
   visible: boolean;
   onClose: () => void;
@@ -34,6 +37,8 @@ export function MembersSheet({
   footer?: React.ReactNode;
   /** Admin-only removal; resolve on success, throw with the website's message on failure. */
   onRemove?: (userId: number) => Promise<unknown>;
+  /** "· N" after the title. Default on (personal groups); family callers turn it off. */
+  showMemberCount?: boolean;
 }) {
   // A local copy so a removed member disappears at once, without reloading the whole list.
   const [list, setList] = useState<MemberRow[] | null>(members);
@@ -79,7 +84,7 @@ export function MembersSheet({
           <View style={styles.head}>
             <Text style={styles.title}>
               {title}
-              {list ? <Text style={styles.count}> · {list.length}</Text> : null}
+              {list && showMemberCount ? <Text style={styles.count}> · {list.length}</Text> : null}
             </Text>
             <Pressable onPress={onClose} accessibilityRole="button" accessibilityLabel="Close" hitSlop={10}>
               <Text style={styles.close}>Close</Text>
@@ -132,10 +137,11 @@ const styles = StyleSheet.create({
   backdrop: { flex: 1, backgroundColor: '#000a', justifyContent: 'flex-end' },
   sheet: { backgroundColor: colors.ink, borderTopLeftRadius: 20, borderTopRightRadius: 20, paddingHorizontal: space.lg, paddingBottom: space.xl, paddingTop: space.sm, maxHeight: '85%', borderTopWidth: StyleSheet.hairlineWidth, borderColor: colors.line },
   handle: { alignSelf: 'center', width: 38, height: 4, borderRadius: 2, backgroundColor: colors.line, marginBottom: space.md },
-  head: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: space.md },
-  title: { color: colors.text, fontFamily: fonts.bold, fontSize: 18 },
+  head: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: space.md, marginBottom: space.md },
+  // A long title wraps in the space left over; Close never shrinks, so it can't be pushed off-screen.
+  title: { flex: 1, color: colors.text, fontFamily: fonts.bold, fontSize: 18 },
   count: { color: colors.faint, fontFamily: fonts.body },
-  close: { color: colors.gold, fontFamily: fonts.medium },
+  close: { flexShrink: 0, color: colors.gold, fontFamily: fonts.medium },
   row: { flexDirection: 'row', alignItems: 'center', gap: space.md, paddingVertical: 10, borderBottomWidth: StyleSheet.hairlineWidth, borderColor: colors.line },
   name: { color: colors.text, fontFamily: fonts.bold, fontSize: 14.5 },
   you: { color: colors.gold, fontFamily: fonts.medium },

@@ -4,7 +4,9 @@
  * (media needs file storage). Refreshes every few seconds while open. Every sender has an
  * avatar (picture or initials); group chats open the Members list from the header.
  * "family" is a Family Tree unit's chat (2026-10-26): members only, with the Members list in the
- * header; it has no rename/business info (those belong to personal groups).
+ * header; it has no rename/business info (those belong to personal groups). Its subtitle is the
+ * unit's whole-family count (the website's recursive_member_count, read once when the chat opens,
+ * not on every refresh); the Members button shows no number, since the chat roster is not the family.
  */
 
 import { Ionicons } from '@expo/vector-icons';
@@ -33,6 +35,7 @@ export default function Chat() {
   const [error, setError] = useState<string>();
   const [showInfo, setShowInfo] = useState(false);
   const [showMembers, setShowMembers] = useState(false);
+  const [familyCount, setFamilyCount] = useState<number | null>(null);
   const list = useRef<FlatList<Q.ChatMessage>>(null);
 
   const load = useCallback(async () => {
@@ -53,6 +56,20 @@ export default function Chat() {
     const t = setInterval(load, POLL_MS);
     return () => clearInterval(t);
   }, [load]);
+
+  // Family chat: the unit's cascade-aware count, once per open (not on the 4-second poll). If it
+  // can't be read, the header just has no subtitle.
+  useEffect(() => {
+    if (kind !== 'family') return;
+    let live = true;
+    Q.familyNeighborhood(Number(id)).then(
+      (n) => live && setFamilyCount(n.recursive_member_count),
+      () => undefined,
+    );
+    return () => {
+      live = false;
+    };
+  }, [kind, id]);
 
   async function send() {
     const body = text.trim();
@@ -86,6 +103,7 @@ export default function Chat() {
         <View style={{ paddingHorizontal: space.lg, paddingTop: space.md }}>
           <BackHeader
             title={title || '…'}
+            subtitle={kind === 'family' && familyCount !== null ? `${familyCount} family ${familyCount === 1 ? 'member' : 'members'}` : undefined}
             right={
               kind === 'group' || kind === 'private' || kind === 'family' ? (
                 <View style={styles.headRight}>
@@ -93,9 +111,15 @@ export default function Chat() {
                     <Avatar user={{ name: privateExtra.with, gender: privateExtra.with_gender, profile_picture_url: privateExtra.with_profile_picture_url }} size={30} />
                   )}
                   {(kind === 'group' || kind === 'family') && extra && (
-                    <Pressable onPress={() => setShowMembers(true)} accessibilityRole="button" accessibilityLabel={`Members, ${extra.members.length}`} style={styles.membersBtn}>
+                    <Pressable
+                      onPress={() => setShowMembers(true)}
+                      accessibilityRole="button"
+                      accessibilityLabel={kind === 'family' ? 'Members' : `Members, ${extra.members.length}`}
+                      style={styles.membersBtn}
+                    >
                       <Ionicons name="people" size={16} color={colors.gold} />
-                      <Text style={styles.membersText}>{extra.members.length}</Text>
+                      {/* Family: no number (the chat roster isn't the family; the subtitle has the count). */}
+                      <Text style={styles.membersText}>{kind === 'family' ? 'Members' : extra.members.length}</Text>
                     </Pressable>
                   )}
                   {kind !== 'family' && (
@@ -163,7 +187,7 @@ export default function Chat() {
           </View>
         )}
       </View>
-      {(kind === 'group' || kind === 'family') && extra && <MembersSheet visible={showMembers} onClose={() => setShowMembers(false)} title={`${title} · Members`} members={extra.members} />}
+      {(kind === 'group' || kind === 'family') && extra && <MembersSheet visible={showMembers} onClose={() => setShowMembers(false)} title={`${title} · Members`} members={extra.members} showMemberCount={kind !== 'family'} />}
     </SafeAreaView>
   );
 }

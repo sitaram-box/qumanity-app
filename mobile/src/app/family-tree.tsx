@@ -422,6 +422,7 @@ export default function FamilyTree() {
         onClose={() => setShowMembers(false)}
         title={unit ? `${unit.name} · Members` : 'Members'}
         members={members}
+        showMemberCount={false}
         onRemove={
           unit?.is_admin
             ? async (uid) => {
