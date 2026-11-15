@@ -114,7 +114,9 @@ export function MembersSheet({
                   m.gender ? GENDER_LABEL[m.gender] ?? m.gender : null,
                   m.age_group,
                   m.present_location,
-                  m.claimed === false ? 'Not on Qumanity yet' : null,
+                  // A placeholder who has passed away shows 🕊️ (same marker as the Family Tree);
+                  // "Not on Qumanity yet" only for the living.
+                  m.is_deceased ? '🕊️ Deceased' : m.claimed === false ? 'Not on Qumanity yet' : null,
                 ]
                   .filter(Boolean)
                   .join(' · ')}

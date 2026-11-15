@@ -683,6 +683,8 @@ export interface MemberRow {
   you: boolean;
   /** false = a Family Tree placeholder with no account yet; true for every real member. */
   claimed: boolean;
+  /** Family Tree placeholders only (website 7699cc6): this person has passed away. */
+  is_deceased?: boolean;
 }
 
 export interface FamilyPerson {
