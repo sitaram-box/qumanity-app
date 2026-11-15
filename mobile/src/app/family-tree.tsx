@@ -27,10 +27,11 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect, useRouter } from 'expo-router';
 import { useCallback, useRef, useState } from 'react';
-import { ActivityIndicator, Alert, Modal, Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Alert, Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { ApiError } from '@/api/client';
 import * as Q from '@/api/qumanity';
 import { Avatar } from '@/components/Avatar';
+import { BottomSheet } from '@/components/BottomSheet';
 import { MembersSheet } from '@/components/MembersSheet';
 import { PublicIdLookup } from '@/components/ProfileCard';
 import { PublicIdInvite } from '@/components/PublicIdInvite';
@@ -373,32 +374,28 @@ export default function FamilyTree() {
         </>
       )}
 
-      <Modal visible={!!linkFor} transparent animationType="slide" onRequestClose={() => setLinkFor(null)}>
-        <View style={styles.backdrop}>
-          <View style={styles.sheet}>
-            <View style={styles.sheetHead}>
-              <Text style={styles.sheetTitle}>Who is {linkFor?.name}?</Text>
-              <Pressable onPress={() => setLinkFor(null)} accessibilityRole="button" accessibilityLabel="Close" hitSlop={10}>
-                <Text style={styles.close}>Close</Text>
-              </Pressable>
-            </View>
-            <Text style={styles.metaText}>
-              If {linkFor?.name} is already on Qumanity, type their 12-digit Public ID. Check the card that appears, then tap Link: they appear as themselves in this tree.
-            </Text>
-            <PublicIdLookup
-              code={linkCode}
-              onCode={(d) => {
-                setLinkCode(d);
-                setLinkFound(null);
-              }}
-              found={linkFound}
-              onFound={setLinkFound}
-              action={<Button title="Link" icon="link" size="sm" onPress={link} busy={linkBusy} />}
-            />
-            <ErrorText>{linkErr}</ErrorText>
-          </View>
+      <BottomSheet visible={!!linkFor} onClose={() => setLinkFor(null)} style={styles.sheet}>
+        <View style={styles.sheetHead}>
+          <Text style={styles.sheetTitle}>Who is {linkFor?.name}?</Text>
+          <Pressable onPress={() => setLinkFor(null)} accessibilityRole="button" accessibilityLabel="Close" hitSlop={10}>
+            <Text style={styles.close}>Close</Text>
+          </Pressable>
         </View>
-      </Modal>
+        <Text style={styles.metaText}>
+          If {linkFor?.name} is already on Qumanity, type their 12-digit Public ID. Check the card that appears, then tap Link: they appear as themselves in this tree.
+        </Text>
+        <PublicIdLookup
+          code={linkCode}
+          onCode={(d) => {
+            setLinkCode(d);
+            setLinkFound(null);
+          }}
+          found={linkFound}
+          onFound={setLinkFound}
+          action={<Button title="Link" icon="link" size="sm" onPress={link} busy={linkBusy} />}
+        />
+        <ErrorText>{linkErr}</ErrorText>
+      </BottomSheet>
 
       <FamilyPersonSheet
         person={sheet?.person ?? null}
@@ -626,8 +623,8 @@ const styles = StyleSheet.create({
   actions: { flexDirection: 'row', gap: space.sm, marginTop: space.lg },
   dashed: { padding: 3, borderWidth: 1.5, borderStyle: 'dashed', borderColor: colors.gold },
   linkTag: { color: colors.gold, fontFamily: fonts.bold, fontSize: 10.5 },
-  backdrop: { flex: 1, backgroundColor: '#000a', justifyContent: 'flex-end' },
-  sheet: { backgroundColor: colors.ink, borderTopLeftRadius: 20, borderTopRightRadius: 20, padding: space.lg, paddingBottom: space.xl, gap: space.sm, borderTopWidth: StyleSheet.hairlineWidth, borderColor: colors.line },
+  // The "Who is…?" link sheet; backdrop, colours, corners and the navigation-bar room come from BottomSheet.
+  sheet: { padding: space.lg, paddingBottom: space.xl, gap: space.sm },
   sheetHead: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   sheetTitle: { flex: 1, color: colors.text, fontFamily: fonts.bold, fontSize: 17 },
   close: { color: colors.gold, fontFamily: fonts.medium },

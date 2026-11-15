@@ -1,9 +1,10 @@
 /** The 5 Q-Punch council seats of a group (same popup as the website board). */
 
 import { useEffect, useState } from 'react';
-import { ActivityIndicator, Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import * as Q from '@/api/qumanity';
 import { colors, fonts, radius, space } from '@/theme';
+import { BottomSheet } from './BottomSheet';
 import { ElectionCard } from './ElectionCard';
 import { Button, ErrorText } from './ui';
 
@@ -55,82 +56,78 @@ export function QPunchSheet({ level, visible, onClose }: { level: Q.BoardLevel; 
   }
 
   return (
-    <Modal visible={visible} animationType="slide" transparent onRequestClose={onClose}>
-      <View style={styles.backdrop}>
-        <View style={styles.sheet}>
-          <View style={styles.handle} />
-          <View style={styles.head}>
-            <Text style={styles.title}>Q-Punch council</Text>
-            <Pressable onPress={onClose} accessibilityRole="button" accessibilityLabel="Close">
-              <Text style={styles.close}>Close</Text>
-            </Pressable>
-          </View>
-          {!data ? (
-            error ? <ErrorText>{error}</ErrorText> : <ActivityIndicator color={colors.gold} />
-          ) : (
-            <ScrollView>
-              <Text style={styles.sub}>
-                {data.group} · {data.label}
-              </Text>
-              <Text style={styles.meta}>
-                {data.election_open
-                  ? 'Elections are open.'
-                  : `Elections start at ${data.election_min.toLocaleString()} residents · now ${data.residents.toLocaleString()}`}
-              </Text>
-              {data.cycle?.lead && <Text style={styles.meta}>This month: {data.cycle.lead} cycle</Text>}
-              {data.election && <ElectionCard election={data.election} guide={data.guide} onChanged={load} />}
-              {data.seats.map((s) => (
-                <View key={s.seat} style={[styles.seat, s.filled && { borderColor: colors.gold }]}>
-                  <View style={[styles.seatNo, s.filled && { backgroundColor: colors.gold }]}>
-                    <Text style={[styles.seatNoText, s.filled && { color: colors.onAccent }]}>{s.seat}</Text>
-                  </View>
-                  <View style={{ flex: 1 }}>
-                    <Text style={styles.seatTitle}>
-                      {s.title}
-                      {!s.filled && <Text style={styles.open}> · open</Text>}
-                    </Text>
-                    <Text style={styles.seatText}>{s.text}</Text>
-                  </View>
-                </View>
-              ))}
-              {data.can_volunteer && !data.is_volunteer && (
-                <View style={{ gap: space.sm, marginTop: space.md }}>
-                  <Text style={styles.seatTitle}>Register as a volunteer (seat 5)</Text>
-                  <TextInput
-                    value={skill}
-                    onChangeText={setSkill}
-                    placeholder="What can you offer? e.g. electrician, tutor"
-                    placeholderTextColor={colors.faint}
-                    style={styles.input}
-                    accessibilityLabel="Volunteer skill"
-                  />
-                  <Button title="Register" variant="ghost" onPress={register} busy={busy} disabled={!skill.trim()} />
-                </View>
-              )}
-              {data.is_volunteer && <Text style={styles.meta}>You are registered as a volunteer.</Text>}
-              {ref?.code ? (
-                <Text style={styles.meta}>✓ Referral code {ref.code.code} · used {ref.code.uses} {ref.code.uses === 1 ? 'time' : 'times'}</Text>
-              ) : ref?.pending ? (
-                <Text style={styles.meta}>Referrer application pending council review</Text>
-              ) : ref ? (
-                <View style={{ gap: space.sm, marginTop: space.md }}>
-                  <Text style={styles.seatTitle}>Become a referrer</Text>
-                  <TextInput value={note} onChangeText={setNote} placeholder="Why do you want to be a referrer?" placeholderTextColor={colors.faint} style={styles.input} maxLength={300} accessibilityLabel="Why do you want to be a referrer" />
-                  <Button title="Apply to be a referrer" variant="ghost" onPress={applyReferrer} busy={busy} disabled={!note.trim()} />
-                </View>
-              ) : null}
-              <ErrorText>{error}</ErrorText>
-            </ScrollView>
-          )}
-        </View>
+    <BottomSheet visible={visible} onClose={onClose} style={styles.sheet}>
+      <View style={styles.handle} />
+      <View style={styles.head}>
+        <Text style={styles.title}>Q-Punch council</Text>
+        <Pressable onPress={onClose} accessibilityRole="button" accessibilityLabel="Close">
+          <Text style={styles.close}>Close</Text>
+        </Pressable>
       </View>
-    </Modal>
+      {!data ? (
+        error ? <ErrorText>{error}</ErrorText> : <ActivityIndicator color={colors.gold} />
+      ) : (
+        <ScrollView>
+          <Text style={styles.sub}>
+            {data.group} · {data.label}
+          </Text>
+          <Text style={styles.meta}>
+            {data.election_open
+              ? 'Elections are open.'
+              : `Elections start at ${data.election_min.toLocaleString()} residents · now ${data.residents.toLocaleString()}`}
+          </Text>
+          {data.cycle?.lead && <Text style={styles.meta}>This month: {data.cycle.lead} cycle</Text>}
+          {data.election && <ElectionCard election={data.election} guide={data.guide} onChanged={load} />}
+          {data.seats.map((s) => (
+            <View key={s.seat} style={[styles.seat, s.filled && { borderColor: colors.gold }]}>
+              <View style={[styles.seatNo, s.filled && { backgroundColor: colors.gold }]}>
+                <Text style={[styles.seatNoText, s.filled && { color: colors.onAccent }]}>{s.seat}</Text>
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.seatTitle}>
+                  {s.title}
+                  {!s.filled && <Text style={styles.open}> · open</Text>}
+                </Text>
+                <Text style={styles.seatText}>{s.text}</Text>
+              </View>
+            </View>
+          ))}
+          {data.can_volunteer && !data.is_volunteer && (
+            <View style={{ gap: space.sm, marginTop: space.md }}>
+              <Text style={styles.seatTitle}>Register as a volunteer (seat 5)</Text>
+              <TextInput
+                value={skill}
+                onChangeText={setSkill}
+                placeholder="What can you offer? e.g. electrician, tutor"
+                placeholderTextColor={colors.faint}
+                style={styles.input}
+                accessibilityLabel="Volunteer skill"
+              />
+              <Button title="Register" variant="ghost" onPress={register} busy={busy} disabled={!skill.trim()} />
+            </View>
+          )}
+          {data.is_volunteer && <Text style={styles.meta}>You are registered as a volunteer.</Text>}
+          {ref?.code ? (
+            <Text style={styles.meta}>✓ Referral code {ref.code.code} · used {ref.code.uses} {ref.code.uses === 1 ? 'time' : 'times'}</Text>
+          ) : ref?.pending ? (
+            <Text style={styles.meta}>Referrer application pending council review</Text>
+          ) : ref ? (
+            <View style={{ gap: space.sm, marginTop: space.md }}>
+              <Text style={styles.seatTitle}>Become a referrer</Text>
+              <TextInput value={note} onChangeText={setNote} placeholder="Why do you want to be a referrer?" placeholderTextColor={colors.faint} style={styles.input} maxLength={300} accessibilityLabel="Why do you want to be a referrer" />
+              <Button title="Apply to be a referrer" variant="ghost" onPress={applyReferrer} busy={busy} disabled={!note.trim()} />
+            </View>
+          ) : null}
+          <ErrorText>{error}</ErrorText>
+        </ScrollView>
+      )}
+    </BottomSheet>
   );
 }
 
 const styles = StyleSheet.create({
-  backdrop: { flex: 1, backgroundColor: '#000a', justifyContent: 'flex-end' },
-  sheet: { backgroundColor: colors.ink, borderTopLeftRadius: 20, borderTopRightRadius: 20, paddingHorizontal: space.lg, paddingBottom: space.xl, paddingTop: space.sm, maxHeight: '85%', borderTopWidth: StyleSheet.hairlineWidth, borderColor: colors.line },
+  // Backdrop, colours, corners and the navigation-bar room come from BottomSheet.
+  sheet: { paddingHorizontal: space.lg, paddingBottom: space.xl, paddingTop: space.sm, maxHeight: '85%' },
   handle: { alignSelf: 'center', width: 38, height: 4, borderRadius: 2, backgroundColor: colors.line, marginBottom: space.md },
   head: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: space.md },
   title: { color: colors.text, fontFamily: fonts.bold, fontSize: 18 },

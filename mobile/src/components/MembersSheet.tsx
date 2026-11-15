@@ -9,10 +9,11 @@
  */
 
 import { Fragment, useEffect, useState } from 'react';
-import { ActivityIndicator, Alert, Modal, Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Alert, Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import type { MemberRow } from '@/api/qumanity';
 import { colors, fonts, radius, space, tint } from '@/theme';
 import { Avatar } from './Avatar';
+import { BottomSheet } from './BottomSheet';
 
 const GENDER_LABEL: Record<string, string> = { male: 'Male', female: 'Female', both: 'Third gender' };
 const ROLE_LABEL = { founder: 'Founder', admin: 'Admin', member: 'Member' } as const;
@@ -77,65 +78,61 @@ export function MembersSheet({
 
   const sorted = [...(list ?? [])].sort((a, b) => ROLE_ORDER[roleOf(a)] - ROLE_ORDER[roleOf(b)] || a.name.localeCompare(b.name));
   return (
-    <Modal visible={visible} animationType="slide" transparent onRequestClose={onClose}>
-      <View style={styles.backdrop}>
-        <View style={styles.sheet}>
-          <View style={styles.handle} />
-          <View style={styles.head}>
-            <Text style={styles.title}>
-              {title}
-              {list && showMemberCount ? <Text style={styles.count}> · {list.length}</Text> : null}
-            </Text>
-            <Pressable onPress={onClose} accessibilityRole="button" accessibilityLabel="Close" hitSlop={10}>
-              <Text style={styles.close}>Close</Text>
-            </Pressable>
-          </View>
-          <ScrollView keyboardShouldPersistTaps="handled">
-            {list === null && <Text style={styles.meta}>Loading…</Text>}
-            {sorted.map((m) => (
-              <Fragment key={m.user_id}>
-              <View style={styles.row} accessibilityLabel={`${m.name}, ${ROLE_LABEL[roleOf(m)]}`}>
-                <Avatar user={m} size={42} />
-                <View style={{ flex: 1 }}>
-                  <Text style={styles.name} numberOfLines={1}>
-                    {m.name}
-                    {m.you ? <Text style={styles.you}> · You</Text> : null}
-                  </Text>
-                  <Text style={styles.meta} numberOfLines={1}>
-                    {[m.gender ? GENDER_LABEL[m.gender] ?? m.gender : null, m.age_group, m.present_location].filter(Boolean).join(' · ')}
-                  </Text>
-                </View>
-                <View style={[styles.role, roleOf(m) !== 'member' && { backgroundColor: tint(colors.gold) }]}>
-                  <Text style={[styles.roleText, roleOf(m) !== 'member' && { color: colors.gold }]}>{ROLE_LABEL[roleOf(m)]}</Text>
-                </View>
-                {/* The website refuses to remove a founder; anyone else (admin or member) can be removed. */}
-                {onRemove && !m.you && roleOf(m) !== 'founder' && (
-                  <Pressable
-                    onPress={() => confirmRemove(m)}
-                    disabled={busy !== null}
-                    style={styles.removeBtn}
-                    accessibilityRole="button"
-                    accessibilityLabel={`Remove ${m.name}`}
-                    hitSlop={6}
-                  >
-                    {busy === m.user_id ? <ActivityIndicator size="small" color={colors.danger} /> : <Text style={styles.removeText}>Remove</Text>}
-                  </Pressable>
-                )}
-              </View>
-              {rowError?.id === m.user_id && <Text style={styles.rowError}>{rowError.text}</Text>}
-              </Fragment>
-            ))}
-            {footer}
-          </ScrollView>
-        </View>
+    <BottomSheet visible={visible} onClose={onClose} style={styles.sheet}>
+      <View style={styles.handle} />
+      <View style={styles.head}>
+        <Text style={styles.title}>
+          {title}
+          {list && showMemberCount ? <Text style={styles.count}> · {list.length}</Text> : null}
+        </Text>
+        <Pressable onPress={onClose} accessibilityRole="button" accessibilityLabel="Close" hitSlop={10}>
+          <Text style={styles.close}>Close</Text>
+        </Pressable>
       </View>
-    </Modal>
+      <ScrollView keyboardShouldPersistTaps="handled">
+        {list === null && <Text style={styles.meta}>Loading…</Text>}
+        {sorted.map((m) => (
+          <Fragment key={m.user_id}>
+          <View style={styles.row} accessibilityLabel={`${m.name}, ${ROLE_LABEL[roleOf(m)]}`}>
+            <Avatar user={m} size={42} />
+            <View style={{ flex: 1 }}>
+              <Text style={styles.name} numberOfLines={1}>
+                {m.name}
+                {m.you ? <Text style={styles.you}> · You</Text> : null}
+              </Text>
+              <Text style={styles.meta} numberOfLines={1}>
+                {[m.gender ? GENDER_LABEL[m.gender] ?? m.gender : null, m.age_group, m.present_location].filter(Boolean).join(' · ')}
+              </Text>
+            </View>
+            <View style={[styles.role, roleOf(m) !== 'member' && { backgroundColor: tint(colors.gold) }]}>
+              <Text style={[styles.roleText, roleOf(m) !== 'member' && { color: colors.gold }]}>{ROLE_LABEL[roleOf(m)]}</Text>
+            </View>
+            {/* The website refuses to remove a founder; anyone else (admin or member) can be removed. */}
+            {onRemove && !m.you && roleOf(m) !== 'founder' && (
+              <Pressable
+                onPress={() => confirmRemove(m)}
+                disabled={busy !== null}
+                style={styles.removeBtn}
+                accessibilityRole="button"
+                accessibilityLabel={`Remove ${m.name}`}
+                hitSlop={6}
+              >
+                {busy === m.user_id ? <ActivityIndicator size="small" color={colors.danger} /> : <Text style={styles.removeText}>Remove</Text>}
+              </Pressable>
+            )}
+          </View>
+          {rowError?.id === m.user_id && <Text style={styles.rowError}>{rowError.text}</Text>}
+          </Fragment>
+        ))}
+        {footer}
+      </ScrollView>
+    </BottomSheet>
   );
 }
 
 const styles = StyleSheet.create({
-  backdrop: { flex: 1, backgroundColor: '#000a', justifyContent: 'flex-end' },
-  sheet: { backgroundColor: colors.ink, borderTopLeftRadius: 20, borderTopRightRadius: 20, paddingHorizontal: space.lg, paddingBottom: space.xl, paddingTop: space.sm, maxHeight: '85%', borderTopWidth: StyleSheet.hairlineWidth, borderColor: colors.line },
+  // Backdrop, colours, corners and the navigation-bar room come from BottomSheet.
+  sheet: { paddingHorizontal: space.lg, paddingBottom: space.xl, paddingTop: space.sm, maxHeight: '85%' },
   handle: { alignSelf: 'center', width: 38, height: 4, borderRadius: 2, backgroundColor: colors.line, marginBottom: space.md },
   head: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: space.md, marginBottom: space.md },
   // A long title wraps in the space left over; Close never shrinks, so it can't be pushed off-screen.
