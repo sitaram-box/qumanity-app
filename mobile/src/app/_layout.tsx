@@ -93,6 +93,7 @@ function Navigator({ ready }: { ready: boolean }) {
         <Stack.Screen name="register" />
         <Stack.Screen name="forgot-pin" />
         <Stack.Screen name="recover-id" />
+        <Stack.Screen name="recover-family" />
       </Stack.Protected>
       <Stack.Protected guard={signedIn}>
         <Stack.Screen name="(tabs)" />

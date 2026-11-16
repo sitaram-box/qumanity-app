@@ -89,6 +89,9 @@ export default function ForgotPin() {
         </>
       )}
       <ErrorText>{error}</ErrorText>
+      {!sentTo && (
+        <Button title="Recover via a family member instead" variant="ghost" size="sm" onPress={() => router.push('/recover-family')} />
+      )}
     </Screen>
   );
 }

@@ -106,6 +106,10 @@ export default function Login() {
           <Text style={styles.link}>Forgot Private ID?</Text>
         </Pressable>
       </View>
+      {/* A parent / child / sibling / spouse on Qumanity vouches for you (PIN, Private ID or both). */}
+      <Pressable onPress={() => router.push('/recover-family')} accessibilityRole="button" style={styles.familyLink}>
+        <Text style={styles.link}>Recover via a family member</Text>
+      </Pressable>
 
       <View style={styles.server}>
         <View style={[styles.dot, { backgroundColor: online === null ? colors.faint : online ? colors.earth : colors.danger }]} />
@@ -164,6 +168,7 @@ const styles = StyleSheet.create({
   checkboxOn: { backgroundColor: colors.gold, borderColor: colors.gold },
   rememberText: { color: colors.dim, fontFamily: fonts.body, fontSize: 13 },
   links: { flexDirection: 'row', justifyContent: 'space-between', marginTop: space.lg },
+  familyLink: { alignSelf: 'center', marginTop: space.md },
   link: { color: colors.gold, fontFamily: fonts.medium, fontSize: 13 },
   server: { flexDirection: 'row', alignItems: 'center', gap: space.sm, marginTop: space.xl, marginBottom: space.sm, paddingTop: space.md, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.line },
   dot: { width: 8, height: 8, borderRadius: 4 },

@@ -3,6 +3,7 @@
  * team, and the ID is returned only by physical letter (same as the website).
  */
 
+import { router } from 'expo-router';
 import { useState } from 'react';
 import { recoverId } from '@/api/qumanity';
 import { Button, ErrorText, Field, Lead, Screen, Title } from '@/components/ui';
@@ -51,6 +52,7 @@ export default function RecoverId() {
       <Field label="Email on the account" value={f.email} onChangeText={set('email')} keyboardType="email-address" autoCapitalize="none" />
       <Field label="Postal address for the letter" value={f.mailing_address} onChangeText={set('mailing_address')} multiline style={{ height: 90 }} />
       <ErrorText>{error}</ErrorText>
+      <Button title="Recover via a family member instead" variant="ghost" size="sm" onPress={() => router.push('/recover-family')} />
     </Screen>
   );
 }

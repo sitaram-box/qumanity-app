@@ -110,6 +110,68 @@ export const verifyPinReset = (private_id: string, otp: string, new_pin: string)
 export const recoverId = (body: Record<string, string>) =>
   api<{ status: string; reference: string }>('/api/auth/recover-id', { body });
 
+// ---------- Family recovery (website family_recovery_core, 2026-11-13..15) ----------
+// The locked-out member asks a nuclear family member (parent / child / sibling / spouse) who is
+// on Qumanity to vouch for them. Public routes (no sign-in); every failed check returns the SAME
+// generic message on purpose, and attempts are rate-limited (3 per day per network and per
+// family member). The website replies with a tracking code: the requester's ONLY key to check the
+// status, see their Private ID once shared, or set a new PIN once approved.
+export type RecoveryAction = 'private_id' | 'pin_reset' | 'both';
+export interface FamilyRecoveryRequest {
+  family_member_private_id: string;
+  family_member_name: string;
+  requester_name: string;
+  /** Who the family member is TO the requester: "father" = they are your father. */
+  relationship: string;
+  action: RecoveryAction;
+  /** Optional: when only the PIN is forgotten and the requester still knows their Private ID. */
+  requester_private_id?: string;
+}
+export const familyRecoveryRequest = (body: FamilyRecoveryRequest) =>
+  api<{ tracking_code: string; expires_at: string }>('/api/recovery/family/request', { body });
+export type RecoveryStatus = 'pending' | 'approved' | 'rejected' | 'expired' | 'completed' | 'superseded';
+export interface FamilyRecoveryStatus {
+  status: RecoveryStatus;
+  action: RecoveryAction;
+  expires_at: string;
+  private_id_available?: boolean;
+  pin_reset_ready?: boolean;
+}
+/** The website's route takes the code as a query parameter (GET); sent over HTTPS only. */
+export const familyRecoveryStatus = (tracking_code: string) =>
+  api<FamilyRecoveryStatus>(`/api/recovery/family/status?tracking_code=${encodeURIComponent(tracking_code)}`);
+export const familyRecoveryRevealPrivateId = (tracking_code: string) =>
+  api<{ private_id: string }>('/api/recovery/family/reveal-private-id', { body: { tracking_code } });
+export const familyRecoveryCompletePinReset = (tracking_code: string, new_pin: string) =>
+  api<{ status: string }>('/api/recovery/family/complete-pin-reset', { body: { tracking_code, new_pin } });
+
+// The family member's side (signed in). Requests arrive as system messages in their Qmail inbox
+// (message_type 'family_recovery_request'); the app reads them from there and acts on them.
+export interface QmailInboxMessage {
+  id: number;
+  subject: string;
+  created_at: string;
+  read_at: string | null;
+  message_type: string;
+  recovery_request_id: number | null;
+}
+export const qmailInbox = () => api<{ messages: QmailInboxMessage[] }>('/api/qmail/inbox');
+export interface FamilyRecoveryDetail {
+  id: number;
+  requester_claimed_name: string;
+  /** What YOU are to the requester ("parent" = you are their parent). */
+  verified_relationship: 'parent' | 'child' | 'sibling' | 'spouse';
+  action: RecoveryAction;
+  status: RecoveryStatus;
+  created_at: string;
+  expires_at: string;
+  can_act: boolean;
+}
+export const familyRecoveryDetail = (id: number) => api<FamilyRecoveryDetail>(`/api/qmail/family-recovery/${id}`);
+export const familyRecoveryShareId = (id: number) => api<{ status: string }>(`/api/qmail/family-recovery/${id}/share-private-id`, { body: {} });
+export const familyRecoveryApprovePin = (id: number) => api<{ status: string }>(`/api/qmail/family-recovery/${id}/approve-pin-reset`, { body: {} });
+export const familyRecoveryReject = (id: number) => api<{ status: string }>(`/api/qmail/family-recovery/${id}/reject`, { body: {} });
+
 // ---------- registration helpers ----------
 export const zodiacPreview = (dob: string) =>
   api<{ sign: string; element: string; age_name: string; age_range: string }>(`/api/zodiac/preview?dob=${encodeURIComponent(dob)}`);
