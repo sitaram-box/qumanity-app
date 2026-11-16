@@ -1,11 +1,18 @@
-/** The 5 Q-Punch council seats of a group (same popup as the website board). */
+/**
+ * The 5 Q-Punch council seats of a group (same popup as the website board). The village shows its
+ * monthly sun-sign election (ElectionCard, pilot village only); Tehsil and up show the 8-seat
+ * element council election instead (CascadeElection). A People's Vote, if one exists here, shows at
+ * every level (PeopleVoteCard).
+ */
 
 import { useEffect, useState } from 'react';
 import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import * as Q from '@/api/qumanity';
 import { colors, fonts, radius, space } from '@/theme';
 import { BottomSheet } from './BottomSheet';
+import { CascadeElection } from './CascadeElection';
 import { ElectionCard } from './ElectionCard';
+import { PeopleVoteCard } from './PeopleVoteCard';
 import { Button, ErrorText } from './ui';
 
 export function QPunchSheet({ level, visible, onClose }: { level: Q.BoardLevel; visible: boolean; onClose: () => void }) {
@@ -78,6 +85,8 @@ export function QPunchSheet({ level, visible, onClose }: { level: Q.BoardLevel; 
           </Text>
           {data.cycle?.lead && <Text style={styles.meta}>This month: {data.cycle.lead} cycle</Text>}
           {data.election && <ElectionCard election={data.election} guide={data.guide} onChanged={load} />}
+          {level !== 'village' && data.group_id && <CascadeElection level={level} locationId={data.group_id} />}
+          {data.group_id && <PeopleVoteCard level={level} locationId={data.group_id} />}
           {data.seats.map((s) => (
             <View key={s.seat} style={[styles.seat, s.filled && { borderColor: colors.gold }]}>
               <View style={[styles.seatNo, s.filled && { backgroundColor: colors.gold }]}>

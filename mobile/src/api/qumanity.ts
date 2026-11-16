@@ -224,6 +224,8 @@ export const removedPosts = () =>
 // ---------- Q-Punch council ----------
 export interface QPunch {
   group: string;
+  /** This level's location id (e.g. "CS.DL.3.4") — the location_id the election routes take. */
+  group_id?: string;
   label: string;
   level: BoardLevel;
   residents: number;
@@ -241,6 +243,88 @@ export interface QPunch {
 }
 export const qpunch = (level: BoardLevel) => api<QPunch>(`/api/qpunch/${level}`);
 export const volunteer = (skill: string) => api<{ status: string }>('/api/qpunch/volunteer', { body: { skill } });
+
+// ---------- Q-Punch cascade election, Tehsil and up (website election_core.cascade_status, 2026-11-16) ----------
+// The Lower House (members currently serving on the councils one level down) elects an 8-seat
+// council: 1 Male + 1 Female per element. The elements take turns leading, one per quarter; the
+// Upper House (everyone living at this location) approves the leading Male as official Head by 51%,
+// and can call a People's Vote on any question. The village keeps its own monthly sign election.
+export type Element = 'Fire' | 'Earth' | 'Air' | 'Water';
+export type CouncilSeat = { user_id: number; name: string; karma: number } | null;
+export interface CascadeStatus {
+  level: BoardLevel;
+  location_id: string;
+  cycle: {
+    status: string; // 'nomination' | 'voting' | 'closed' …
+    year: number;
+    term_years: number | null;
+    nomination_start: string;
+    nomination_end: string;
+    voting_start: string;
+    voting_end: string;
+  };
+  eligibility: {
+    can_nominate: boolean;
+    nominate_reason: string;
+    already_nominated: boolean;
+    can_vote: boolean;
+    vote_reason: string;
+    /** Seats this member already voted for (one vote per seat). */
+    voted: { gender: 'male' | 'female'; element: Element }[];
+  };
+  lower_house_size: number;
+  council: {
+    id: number;
+    term_start: string;
+    term_end: string;
+    active_element: Element | null;
+    head_user_id: number | null;
+    head_gender: 'male' | 'female' | null;
+    members: Record<Element, { male: CouncilSeat; female: CouncilSeat }>;
+    is_upper_house: boolean;
+    /** Open 51% Head approval for the leading element's Male, if one is being decided now. */
+    approval: { male_candidate_user_id: number; approval_end: string; already_voted: boolean } | null;
+  } | null;
+}
+export interface CascadeCandidate {
+  id: number;
+  user_id: number;
+  name: string;
+  gender: 'male' | 'female';
+  element: Element;
+  manifest: string | null;
+  form_reason: string | null;
+  form_changes: string | null;
+  karma: number;
+}
+export type CascadeCandidates = Record<Element, { male: CascadeCandidate[]; female: CascadeCandidate[] }>;
+const loc = (level: BoardLevel, locationId: string) => `level=${level}&location_id=${encodeURIComponent(locationId)}`;
+export const cascadeStatus = (level: BoardLevel, locationId: string) => api<CascadeStatus>(`/api/election/status?${loc(level, locationId)}`);
+export const cascadeCandidates = (level: BoardLevel, locationId: string) =>
+  api<{ restricted: boolean } & CascadeCandidates>(`/api/election/candidates?${loc(level, locationId)}`);
+/** One seat at a time: the website records one vote per (element, gender). */
+export const cascadeVote = (level: BoardLevel, location_id: string, element: Element, gender: 'male' | 'female', candidate_user_id: number) =>
+  api<{ status: string }>('/api/election/vote', { body: { level, location_id, element, gender, candidate_user_id } });
+export const cascadeNominate = (level: BoardLevel, location_id: string, f: { reason: string; why_vote: string; changes: string }) =>
+  api<{ status: string }>('/api/election/nominate', { body: { level, location_id, ...f } });
+/** Upper House 51% ballot on the leading element's Male becoming official Head. */
+export const headApprovalVote = (council_id: number, approve: boolean) => api<{ status: string }>('/api/election/vote', { body: { council_id, approve } });
+
+// People's Vote: a referendum the Upper House can hold at any level (village included).
+export interface PeopleVote {
+  id: number;
+  title: string;
+  description: string | null;
+  status: 'open' | 'passed' | 'failed';
+  end_time: string;
+  /** Hidden (null) while the vote is open. */
+  votes_for: number | null;
+  votes_against: number | null;
+  already_voted: boolean;
+}
+export const peopleVoteStatus = (level: BoardLevel, locationId: string) =>
+  api<{ vote: PeopleVote | null; is_upper_house: boolean }>(`/api/people-vote/status?${loc(level, locationId)}`);
+export const peopleVoteCast = (vote_id: number, in_favour: boolean) => api<{ status: string }>('/api/people-vote/cast', { body: { vote_id, in_favour } });
 
 // ---------- monthly sign election (election_core.py): week 1 stand, weeks 2-3 vote, week 4 results ----------
 export interface ElectionWeek { week: 1 | 2 | 3 | 4; key: string; title: string; start: string; end: string; text: string }
