@@ -107,7 +107,8 @@ export function LevelPage({ accent, levels }: { title?: string; note?: string; a
           <Stat icon="ribbon" value={karma} label="Karma" />
         </View>
         <View style={styles.actions}>
-          <Action icon="apps" label="Groups" onPress={() => setGroups(true)} />
+          {/* Website naming (2026-11-16): a village has Local Areas inside it; every level above has Sub-Groups. */}
+          <Action icon="apps" label={level === 'village' ? 'Local Areas' : 'Sub-Groups'} onPress={() => setGroups(true)} />
           <Action icon="shield-checkmark" label="Q-Punch" onPress={() => setCouncil(true)} />
           <Action
             icon="stats-chart"

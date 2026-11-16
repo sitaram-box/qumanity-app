@@ -1,7 +1,8 @@
 /**
- * The ☰ Groups drawer (docs/sub_groups.md):
- *   Village          → the village's sub-groups (council creates; members ask to join ONE)
- *   Tehsil → Earth   → the places one level below, for their statistics only (never a chat)
+ * The board's groups drawer (docs/sub_groups.md), titled like the button that opens it (website
+ * naming, 2026-11-16):
+ *   Village          → "Local Areas": the village's sub-groups (council creates; members ask to join ONE)
+ *   Tehsil → Earth   → "Sub-Groups": the places one level below, for their statistics only (never a chat)
  */
 
 import { Ionicons } from '@expo/vector-icons';
@@ -28,7 +29,11 @@ export function GroupsSheet({ level, struct, onClose }: { level: Q.BoardLevel; s
   return (
     <SafeAreaView style={styles.safe}>
       <View style={styles.head}>
-        <Text style={styles.title}>{level === 'village' ? 'Village groups' : BELOW[level]}</Text>
+        <View style={{ flex: 1 }}>
+          <Text style={styles.title}>{level === 'village' ? 'Local Areas' : 'Sub-Groups'}</Text>
+          {/* Which places the list holds ("Villages", "Tehsils" …) stays visible under the title. */}
+          {level !== 'village' && BELOW[level] ? <Text style={styles.sub}>{BELOW[level]}</Text> : null}
+        </View>
         <Pressable onPress={onClose} accessibilityRole="button">
           <Text style={styles.close}>← Board</Text>
         </Pressable>
@@ -180,6 +185,7 @@ const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.ink },
   head: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: space.lg },
   title: { color: colors.text, fontFamily: fonts.bold, fontSize: 18 },
+  sub: { color: colors.dim, fontFamily: fonts.body, fontSize: 13, marginTop: 2 },
   close: { color: colors.gold, fontFamily: fonts.medium },
   hint: { color: colors.dim, fontFamily: fonts.body, fontSize: 14, marginBottom: space.md },
   meta: { color: colors.faint, fontFamily: fonts.body, fontSize: 12, marginBottom: space.sm },
