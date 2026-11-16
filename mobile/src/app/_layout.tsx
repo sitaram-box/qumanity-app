@@ -6,6 +6,7 @@ import { useEffect, useState, type ReactNode } from 'react';
 import { ActivityIndicator, Keyboard, Platform, View } from 'react-native';
 import { SafeAreaInsetsContext, SafeAreaProvider, useSafeAreaInsets } from 'react-native-safe-area-context';
 import PoemsMarquee from '@/components/PoemsMarquee';
+import { UpdateBanner } from '@/components/UpdateBanner';
 import { Logo } from '@/components/ui';
 import { QM_MARQUEE_ENABLED } from '@/config';
 import { AppProvider, useApp } from '@/state/app';
@@ -20,6 +21,8 @@ export default function RootLayout() {
         <BottomMarqueeLayout showMarquee={fontsLoaded}>
           <Navigator ready={fontsLoaded} />
         </BottomMarqueeLayout>
+        {/* "A new version is available" card over every screen (signed in or out); silent if offline. */}
+        {fontsLoaded && <UpdateBanner />}
       </AppProvider>
     </SafeAreaProvider>
   );
