@@ -72,7 +72,9 @@ async function store(key: string, value: string | null) {
 
 export async function loadStoredSession(): Promise<{ token: string | null; server: string }> {
   token = await stored(TOKEN_KEY);
-  server = (await stored(SERVER_KEY)) ?? defaultServer();
+  // Release builds always use the live website: the sign-in screen no longer lets anyone change it
+  // (2026-11-18), so an address saved by an older version is ignored rather than stuck forever.
+  server = __DEV__ ? ((await stored(SERVER_KEY)) ?? defaultServer()) : PRODUCTION_SERVER;
   return { token, server };
 }
 

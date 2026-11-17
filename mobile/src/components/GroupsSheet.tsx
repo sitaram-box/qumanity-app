@@ -1,7 +1,8 @@
 /**
  * The board's groups drawer (docs/sub_groups.md), titled like the button that opens it (website
  * naming, 2026-11-16):
- *   Village          → "Local Areas": the village's sub-groups (council creates; members ask to join ONE)
+ *   Village          → "Local Areas": the village's neighbourhoods, each with its own chat (LocalAreas.tsx,
+ *                      2026-11-18 — replacing the older village sub-groups here, as on the website)
  *   Tehsil → Earth   → "Sub-Groups": the places one level below, for their statistics only (never a chat)
  */
 
@@ -12,8 +13,9 @@ import { ActivityIndicator, FlatList, Pressable, StyleSheet, Text, View } from '
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { childrenOf, type Place } from '@/api/locations';
 import * as Q from '@/api/qumanity';
-import { colors, fonts, radius, space } from '@/theme';
-import { Button, ErrorText, Field } from './ui';
+import { colors, fonts, space } from '@/theme';
+import { LocalAreas } from './LocalAreas';
+import { ErrorText } from './ui';
 
 const BELOW: Partial<Record<Q.BoardLevel, string>> = {
   earth: 'Continents',
@@ -38,101 +40,17 @@ export function GroupsSheet({ level, struct, onClose }: { level: Q.BoardLevel; s
           <Text style={styles.close}>← Board</Text>
         </Pressable>
       </View>
-      {level === 'village' ? <VillageGroups onClose={onClose} /> : <PlacesBelow level={level} struct={struct} onClose={onClose} />}
+      {level !== 'village' ? (
+        <PlacesBelow level={level} struct={struct} onClose={onClose} />
+      ) : struct.village?.id ? (
+        <LocalAreas villageId={String(struct.village.id)} villageName={struct.village.name} onClose={onClose} />
+      ) : (
+        <Text style={[styles.hint, { padding: space.lg }]}>Set your present village to see its Local Areas.</Text>
+      )}
     </SafeAreaView>
   );
 }
 
-function VillageGroups({ onClose }: { onClose: () => void }) {
-  const [data, setData] = useState<Awaited<ReturnType<typeof Q.subgroups>> | null>(null);
-  const [error, setError] = useState<string>();
-  const [name, setName] = useState('');
-  const [desc, setDesc] = useState('');
-  const load = () => Q.subgroups().then(setData, (e) => setError((e as Error).message));
-  useEffect(() => {
-    load();
-  }, []);
-
-  const act = (fn: () => Promise<unknown>) => async () => {
-    setError(undefined);
-    try {
-      await fn();
-      await load();
-    } catch (e) {
-      setError((e as Error).message);
-    }
-  };
-
-  if (!data) return error ? <ErrorText>{error}</ErrorText> : <ActivityIndicator color={colors.gold} />;
-  const joinedOne = data.groups.some((g) => g.my_status === 'approved' || g.my_status === 'pending');
-
-  return (
-    <FlatList
-      data={data.groups}
-      keyExtractor={(g) => String(g.id)}
-      contentContainerStyle={{ padding: space.lg }}
-      ListHeaderComponent={<Text style={styles.hint}>Groups inside {data.village ?? 'your village'}. You can belong to one.</Text>}
-      ListEmptyComponent={<Text style={styles.hint}>No village groups yet.</Text>}
-      renderItem={({ item: g }) => (
-        <View style={styles.card}>
-          <Text style={styles.cardTitle}>{g.name}</Text>
-          {!!g.description && <Text style={styles.hint}>{g.description}</Text>}
-          <Text style={styles.meta}>{g.members} members</Text>
-          {g.my_status === 'approved' || data.is_admin ? (
-            <Button
-              title="Open chat"
-              variant="ghost"
-              onPress={() => {
-                onClose();
-                router.push({ pathname: '/chat/[kind]/[id]', params: { kind: 'sub', id: String(g.id) } });
-              }}
-            />
-          ) : g.my_status === 'pending' ? (
-            <Text style={styles.meta}>Waiting for the council to approve.</Text>
-          ) : !joinedOne ? (
-            <Button title="Ask to join" variant="ghost" onPress={act(() => Q.joinSubgroup(g.id))} />
-          ) : null}
-          {data.is_admin &&
-            g.pending?.map((p) => (
-              <View key={p.user_id} style={styles.pending}>
-                <Text style={styles.pendingName}>{p.name} wants to join</Text>
-                <Pressable onPress={act(() => Q.decideSubgroup(g.id, p.user_id, true))} accessibilityRole="button">
-                  <Text style={styles.yes}>Approve</Text>
-                </Pressable>
-                <Pressable onPress={act(() => Q.decideSubgroup(g.id, p.user_id, false))} accessibilityRole="button">
-                  <Text style={styles.no}>Decline</Text>
-                </Pressable>
-              </View>
-            ))}
-        </View>
-      )}
-      ListFooterComponent={
-        <View>
-          <ErrorText>{error}</ErrorText>
-          {data.is_admin && (
-            <View style={[styles.card, { marginTop: space.lg }]}>
-              <Text style={styles.cardTitle}>New village group (council only)</Text>
-              <Field label="Name" value={name} onChangeText={setName} />
-              <Field label="Description" value={desc} onChangeText={setDesc} />
-              <Button
-                title="Create"
-                variant="ghost"
-                disabled={name.trim().length < 2}
-                onPress={act(async () => {
-                  await Q.createSubgroup(name.trim(), desc.trim());
-                  setName('');
-                  setDesc('');
-                })}
-              />
-            </View>
-          )}
-        </View>
-      }
-    />
-  );
-}
-
-/** Rebuild the location-API place for the person's group at this level. */
 function placeAt(level: Q.BoardLevel, struct: Q.LocationStruct): Place | null {
   if (level === 'earth') return null;
   const node = struct[level];
@@ -188,13 +106,6 @@ const styles = StyleSheet.create({
   sub: { color: colors.dim, fontFamily: fonts.body, fontSize: 13, marginTop: 2 },
   close: { color: colors.gold, fontFamily: fonts.medium },
   hint: { color: colors.dim, fontFamily: fonts.body, fontSize: 14, marginBottom: space.md },
-  meta: { color: colors.faint, fontFamily: fonts.body, fontSize: 12, marginBottom: space.sm },
-  card: { backgroundColor: colors.panel, borderRadius: radius.md, padding: space.lg, marginBottom: space.md },
-  cardTitle: { color: colors.text, fontFamily: fonts.bold, fontSize: 16, marginBottom: 4 },
-  pending: { flexDirection: 'row', alignItems: 'center', gap: space.md, marginTop: space.sm },
-  pendingName: { flex: 1, color: colors.text, fontFamily: fonts.body },
-  yes: { color: colors.earth, fontFamily: fonts.bold },
-  no: { color: colors.danger, fontFamily: fonts.bold },
   row: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 14, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.line },
   rowText: { color: colors.text, fontFamily: fonts.body, fontSize: 16 },
 });

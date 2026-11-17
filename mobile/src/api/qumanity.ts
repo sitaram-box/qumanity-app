@@ -385,11 +385,16 @@ export interface ChatMessage {
   text: string;
   at: string;
 }
-/** 'family' = a Family Tree unit's chat (website 2026-10-26: /api/family-groups/<id>/messages). */
-export type ChatKind = 'sub' | 'group' | 'private' | 'family';
+/** 'family' = a Family Tree unit's chat (website 2026-10-26: /api/family-groups/<id>/messages).
+ * 'local' = a Local Area's chat (website 2026-11-18: /api/local-areas/<id>/chat). */
+export type ChatKind = 'sub' | 'group' | 'private' | 'family' | 'local';
 export async function chatLoad(kind: ChatKind, id: number): Promise<{ title: string; messages: ChatMessage[]; extra?: unknown }> {
   if (kind === 'sub') {
     const r = await api<{ name: string; messages: ChatMessage[] }>(`/api/chat/${id}`);
+    return { title: r.name, messages: r.messages };
+  }
+  if (kind === 'local') {
+    const r = await api<{ name: string; messages: ChatMessage[] }>(`/api/local-areas/${id}/chat`);
     return { title: r.name, messages: r.messages };
   }
   if (kind === 'family') {
@@ -411,13 +416,54 @@ export function chatSend(kind: ChatKind, id: number, text: string) {
   const path =
     kind === 'sub'
       ? `/api/chat/${id}`
-      : kind === 'group'
+      : kind === 'local'
+        ? `/api/local-areas/${id}/chat`
+        : kind === 'group'
         ? `/api/people/groups/${id}/messages`
         : kind === 'family'
           ? `/api/family-groups/${id}/messages`
           : `/api/people/chats/${id}`;
   return api<{ status: string }>(path, { body: { text } });
 }
+
+// ---------- Local Areas (website local_area_core, 2026-11-18) ----------
+// Neighbourhoods inside a village, each with its own chat. A member is in at most one; the first
+// join is free, every later one (moving, or rejoining after leaving) needs the village's Nayak /
+// Nayika or the Founder to approve. Posting and voting stay on the Village board.
+export interface LocalArea {
+  id: number;
+  name: string;
+  member_count: number;
+}
+export interface LocalAreasList {
+  local_areas: LocalArea[];
+  /** The Local Area you're in now, if any. */
+  my_local_area_id: number | null;
+  /** A move (or rejoin) you've asked for that's waiting for approval. */
+  my_pending_move_to: number | null;
+  /** You can create Local Areas and decide move requests here (Founder, or this village's Nayak/Nayika). */
+  can_manage: boolean;
+}
+export interface LocalAreaMoveRequest {
+  id: number;
+  user_id: number;
+  user_name: string;
+  from_local_area_id: number | null;
+  from_name: string | null;
+  to_local_area_id: number;
+  to_name: string;
+  requested_at: string;
+}
+export const localAreasList = (villageId: string) => api<LocalAreasList>(`/api/local-areas/list?village_id=${encodeURIComponent(villageId)}`);
+export const localAreaCreate = (village_id: string, name: string) => api<{ id: number }>('/api/local-areas/create', { body: { village_id, name } });
+export const localAreaJoin = (local_area_id: number) => api<{ local_area_id: number }>('/api/local-areas/join', { body: { local_area_id } });
+export const localAreaRequestMove = (to_local_area_id: number) =>
+  api<{ request_id: number; status: 'created' | 'already_pending' }>('/api/local-areas/request-move', { body: { to_local_area_id } });
+export const localAreaLeave = () => api<{ ok: boolean }>('/api/local-areas/leave', { body: {} });
+export const localAreaRequests = (villageId: string) =>
+  api<{ requests: LocalAreaMoveRequest[] }>(`/api/local-areas/requests?village_id=${encodeURIComponent(villageId)}`);
+export const localAreaDecide = (requestId: number, decision: 'approve' | 'deny') =>
+  api<{ ok: boolean }>(`/api/local-areas/requests/${requestId}/decide`, { body: { decision } });
 
 // ---------- personal timeline ----------
 // 2026-09-28: groups moved from 5 fixed "kind" slots to a category with any number of groups

@@ -10,6 +10,7 @@ import * as Clipboard from 'expo-clipboard';
 import { router } from 'expo-router';
 import { useEffect, useMemo, useState } from 'react';
 import { Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { SafeAreaProvider } from 'react-native-safe-area-context';
 import * as Q from '@/api/qumanity';
 import { useApp } from '@/state/app';
 import { colors, fonts, radius, space, tint } from '@/theme';
@@ -127,7 +128,11 @@ export function LevelPage({ accent, levels }: { title?: string; note?: string; a
 
       <QPunchSheet level={level} visible={council} onClose={() => setCouncil(false)} />
       <Modal visible={groups} animationType="slide" onRequestClose={() => setGroups(false)}>
-        <GroupsSheet level={level} struct={struct} onClose={() => setGroups(false)} />
+        {/* Its own provider: a Modal is a separate window, so without it the screen didn't know where
+            the status bar is — its title and "← Board" sat under the iPhone's clock and icons. */}
+        <SafeAreaProvider>
+          <GroupsSheet level={level} struct={struct} onClose={() => setGroups(false)} />
+        </SafeAreaProvider>
       </Modal>
     </View>
   );

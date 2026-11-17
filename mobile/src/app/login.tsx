@@ -1,10 +1,14 @@
-/** Sign in: 9-digit Private ID + 5-character PIN (5 wrong PINs lock the ID for 15 minutes, enforced by the website). */
+/**
+ * Sign in: 9-digit Private ID + 5-character PIN (5 wrong PINs lock the ID for 15 minutes, enforced by the website).
+ * The website address is not shown or editable here (2026-11-18): the app always talks to
+ * https://qumanity.in (development builds: the Mac running the website — api/client.ts). If it
+ * can't be reached, signing in says so.
+ */
 
 import { Ionicons } from '@expo/vector-icons';
 import { router } from 'expo-router';
 import { useEffect, useState } from 'react';
-import { Platform, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
-import { ping } from '@/api/qumanity';
+import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import { CodeInput } from '@/components/CodeInput';
 import { Button, ErrorText, Label, Lead, Logo, Screen, Title } from '@/components/ui';
 import { rememberedId, setRememberedId } from '@/lib/remembered';
@@ -12,27 +16,15 @@ import { useApp } from '@/state/app';
 import { colors, fonts, radius, space } from '@/theme';
 
 export default function Login() {
-  const { signIn, server, setServer } = useApp();
+  const { signIn } = useApp();
   const [privateId, setPrivateId] = useState('');
   const [pin, setPin] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string>();
-  const [editServer, setEditServer] = useState(false);
-  const [serverDraft, setServerDraft] = useState(server);
-  const [online, setOnline] = useState<boolean | null>(null);
   const [remember, setRemember] = useState(false);
 
   const digits = privateId.replace(/\D/g, '');
   const valid = digits.length === 9 && pin.length === 5;
-
-  useEffect(() => {
-    let live = true;
-    setOnline(null);
-    ping().then(() => live && setOnline(true), () => live && setOnline(false));
-    return () => {
-      live = false;
-    };
-  }, [server]);
 
   useEffect(() => {
     rememberedId().then((id) => {
@@ -111,38 +103,6 @@ export default function Login() {
         <Text style={styles.link}>Recover via a family member</Text>
       </Pressable>
 
-      <View style={styles.server}>
-        <View style={[styles.dot, { backgroundColor: online === null ? colors.faint : online ? colors.earth : colors.danger }]} />
-        <Text style={styles.serverText} numberOfLines={1}>
-          {online === false ? 'Not connected: ' : 'Server: '}
-          {server}
-        </Text>
-        <Pressable onPress={() => setEditServer((v) => !v)} accessibilityRole="button">
-          <Text style={styles.link}>{editServer ? 'Close' : 'Change'}</Text>
-        </Pressable>
-      </View>
-      {editServer && (
-        <View style={{ gap: space.sm }}>
-          <TextInput
-            value={serverDraft}
-            onChangeText={setServerDraft}
-            autoCapitalize="none"
-            autoCorrect={false}
-            keyboardType="url"
-            style={styles.serverInput}
-            accessibilityLabel="Website address"
-          />
-          <Text style={styles.hint}>The Mac running the Qumanity website, on the same Wi-Fi, e.g. http://192.168.1.20:5050</Text>
-          <Button
-            title="Save address"
-            variant="ghost"
-            onPress={async () => {
-              await setServer(serverDraft.trim());
-              setEditServer(false);
-            }}
-          />
-        </View>
-      )}
     </Screen>
   );
 }
@@ -170,18 +130,4 @@ const styles = StyleSheet.create({
   links: { flexDirection: 'row', justifyContent: 'space-between', marginTop: space.lg },
   familyLink: { alignSelf: 'center', marginTop: space.md },
   link: { color: colors.gold, fontFamily: fonts.medium, fontSize: 13 },
-  server: { flexDirection: 'row', alignItems: 'center', gap: space.sm, marginTop: space.xl, marginBottom: space.sm, paddingTop: space.md, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.line },
-  dot: { width: 8, height: 8, borderRadius: 4 },
-  serverText: { flex: 1, color: colors.faint, fontFamily: fonts.body, fontSize: 12 },
-  serverInput: {
-    height: 44,
-    borderRadius: radius.md,
-    borderWidth: 1,
-    borderColor: colors.line,
-    backgroundColor: colors.panel,
-    paddingHorizontal: space.lg,
-    color: colors.text,
-    fontFamily: fonts.body,
-  },
-  hint: { color: colors.faint, fontFamily: fonts.body, fontSize: 12 },
 });
