@@ -1,5 +1,6 @@
-/** Step 1 · Personal details: name, gender, date & time of birth (or "don't remember"), mother tongue, optional private
- * Spiritual path, optional contact, 5-character PIN (twice). */
+/** Step 1 · Personal details: name, gender, date & time of birth (12-hour with AM/PM, sent to the
+ * website as 24-hour HH:MM; or "don't remember"), mother tongue and an optional private Spiritual
+ * path (each chosen from a list), optional contact, 5-character PIN (twice). */
 
 import { Ionicons } from '@expo/vector-icons';
 import { router } from 'expo-router';
@@ -12,7 +13,14 @@ import { Button, Chip, ErrorText, Field, Label, Lead, Screen, Steps, Title } fro
 import { useApp } from '@/state/app';
 import { colors, fonts, space, type } from '@/theme';
 import { PIN_HINT } from '@/components/pin.logic';
-import { RELIGIONS, RELIGION_HINT, type Religion } from '@/components/registration.logic';
+import { RELIGIONS, from24h, to24h, type Religion } from '@/components/registration.logic';
+import { SelectField } from '@/components/SelectField';
+
+// Mother tongue choices, grouped as before (each shown in its own script where that differs).
+const LANGUAGE_OPTIONS = LANGUAGE_GROUPS.flatMap((g) =>
+  g.languages.map((l) => ({ value: l.name, label: l.native === l.name ? l.name : `${l.native} · ${l.name}`, group: g.label })),
+);
+const RELIGION_OPTIONS = RELIGIONS.map((r) => ({ value: r.value, label: r.label }));
 
 const GENDERS = [
   { value: 'male', label: 'Male' },
@@ -31,8 +39,10 @@ export default function PersonalDetails() {
   const [day, setDay] = useState(draft.dob.slice(8, 10));
   const [month, setMonth] = useState(draft.dob.slice(5, 7));
   const [year, setYear] = useState(draft.dob.slice(0, 4));
-  const [hour, setHour] = useState(draft.tob.slice(0, 2));
-  const [minute, setMinute] = useState(draft.tob.slice(3, 5));
+  const savedTime = from24h(draft.tob);
+  const [hour, setHour] = useState(savedTime.hour);
+  const [minute, setMinute] = useState(savedTime.minute);
+  const [period, setPeriod] = useState<'AM' | 'PM' | null>(savedTime.period);
   const [tobUnknown, setTobUnknown] = useState(draft.tobUnknown);
   const [religion, setReligion] = useState<Religion>(draft.religion);
   const [language, setLanguage] = useState(draft.language);
@@ -44,13 +54,13 @@ export default function PersonalDetails() {
   const [touched, setTouched] = useState(false);
 
   const dob = year.length === 4 && month && day ? `${year}-${pad(month)}-${pad(day)}` : '';
-  const tob = hour && minute ? `${pad(hour)}:${pad(minute)}` : '';
+  const tob = to24h(hour, minute, period) ?? '';
 
   const errors: Record<string, string> = {};
   if (name.trim().length < 2) errors.name = 'Enter your full name.';
   if (!gender) errors.gender = 'Choose one.';
   if (!/^\d{4}-\d{2}-\d{2}$/.test(dob) || Number.isNaN(Date.parse(dob)) || dob > new Date().toISOString().slice(0, 10)) errors.dob = 'Enter a valid date of birth.';
-  if (!tobUnknown && !/^([01]\d|2[0-3]):[0-5]\d$/.test(tob)) errors.tob = 'Enter time of birth as HH:MM (24-hour).';
+  if (!tobUnknown && !tob) errors.tob = 'Enter the hour (1–12) and minute of birth, and choose AM or PM.';
   if (email && !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) errors.email = 'That email does not look right.';
   if (pin.length !== 5) errors.pin = 'Choose a 5-character PIN.';
   else if (pin2 !== pin) errors.pin = 'The two PINs do not match.';
@@ -108,8 +118,13 @@ export default function PersonalDetails() {
       {!tobUnknown && (
         <>
           <View style={styles.row}>
-            <Field label="Hour of birth" value={hour} onChangeText={(t) => setHour(digits(2)(t))} keyboardType="number-pad" placeholder="HH" style={styles.small} />
+            <Field label="Hour of birth" value={hour} onChangeText={(t) => setHour(digits(2)(t))} keyboardType="number-pad" placeholder="1–12" style={styles.small} />
             <Field label="Minute" value={minute} onChangeText={(t) => setMinute(digits(2)(t))} keyboardType="number-pad" placeholder="MM" style={styles.small} />
+            <View style={styles.ampm}>
+              {(['AM', 'PM'] as const).map((p) => (
+                <Chip key={p} label={p} selected={period === p} onPress={() => setPeriod(p)} />
+              ))}
+            </View>
           </View>
           <ErrorText>{show('tob')}</ErrorText>
         </>
@@ -124,28 +139,19 @@ export default function PersonalDetails() {
         <Text style={styles.checkText}>I don't remember my exact birth time</Text>
       </Pressable>
 
-      <Label>Mother tongue</Label>
-      {LANGUAGE_GROUPS.map((g) => (
-        <View key={g.key} style={{ marginBottom: space.sm }}>
-          <Text style={styles.group}>{g.label}</Text>
-          <View style={styles.wrap}>
-            {g.languages.map((l) => (
-              <Chip key={l.name} label={l.native === l.name ? l.name : `${l.native} · ${l.name}`} selected={language === l.name} onPress={() => setLanguage(l.name)} />
-            ))}
-          </View>
-        </View>
-      ))}
+      <SelectField label="Mother tongue" value={language} options={LANGUAGE_OPTIONS} onChange={setLanguage} placeholder="Choose your mother tongue" searchable />
 
-      <Label>🕉️ Spiritual path (optional — kept private)</Label>
-      <View style={styles.wrap}>
-        {RELIGIONS.map((r) => (
-          <Chip key={r.value} label={r.label} selected={religion === r.value} onPress={() => setReligion(religion === r.value ? '' : r.value)} />
-        ))}
-      </View>
-      <Text style={[type.small, { marginBottom: space.md }]}>{RELIGION_HINT}</Text>
+      <SelectField
+        label="🕉️ Spiritual path (optional — kept private)"
+        value={religion}
+        options={RELIGION_OPTIONS}
+        onChange={(v) => setReligion(v as Religion)}
+        placeholder="Not answered"
+        clearLabel="Not answered"
+      />
 
-      <Field label="Phone (optional, for PIN recovery)" value={phone} onChangeText={setPhone} keyboardType="phone-pad" />
-      <Field label="Email (optional, for PIN recovery)" value={email} onChangeText={setEmail} keyboardType="email-address" autoCapitalize="none" error={show('email')} />
+      <Field label="Phone" value={phone} onChangeText={setPhone} keyboardType="phone-pad" />
+      <Field label="Email" value={email} onChangeText={setEmail} keyboardType="email-address" autoCapitalize="none" error={show('email')} />
 
       <Label>Choose a 5-character PIN</Label>
       <Text style={type.small}>{PIN_HINT}</Text>
@@ -162,8 +168,8 @@ const styles = StyleSheet.create({
   row: { flexDirection: 'row', gap: space.md },
   small: { width: 76, textAlign: 'center' },
   year: { width: 110, textAlign: 'center' },
+  ampm: { flexDirection: 'row', alignSelf: 'flex-end', marginBottom: space.md },
   check: { flexDirection: 'row', alignItems: 'center', gap: space.sm, marginBottom: space.lg },
   checkText: { color: colors.text, fontFamily: fonts.body, flex: 1 },
   sign: { color: colors.gold, fontFamily: fonts.medium, marginBottom: space.lg },
-  group: { color: colors.faint, fontFamily: fonts.medium, fontSize: 12, marginBottom: space.sm, textTransform: 'uppercase', letterSpacing: 1 },
 });

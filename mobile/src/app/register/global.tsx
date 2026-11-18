@@ -1,6 +1,7 @@
 /**
- * Step 2 · Birth Location: where you were born, anywhere on Earth, down to the village if it's
- * in the Indian Sub-continent.
+ * Step 2 · Birth Location: where you were born, anywhere on Earth: Continent → Country, and in the
+ * 10 Sub-continent countries on to the Zone and State (website 2026-11-19 — no District / Tehsil /
+ * Village; the website refuses them). Present Location (next step) keeps its full depth.
  *
  * Unchanged by Phase 2 (2026-11-08): this screen's own meaning and payload (draft.birth,
  * birth_location) have never been about account classification -- despite the function name
@@ -35,8 +36,8 @@ export default function GlobalAccount() {
     <Screen scroll={false} footer={<Button title="Next · Present Location" onPress={() => router.push('/register/public')} disabled={!complete} />}>
       <Steps at={2} of={4} />
       <Title>Where were you born?</Title>
-      <Lead>Your birth place never changes. Your Private ID is kept in your birth village.</Lead>
-      <LocationPicker path={draft.birth} onChange={(p) => setDraft({ birth: p })} onComplete={onComplete} />
+      <Lead>Your birth place never changes.</Lead>
+      <LocationPicker path={draft.birth} onChange={(p) => setDraft({ birth: p })} onComplete={onComplete} stopAtState />
     </Screen>
   );
 }

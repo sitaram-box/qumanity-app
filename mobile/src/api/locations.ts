@@ -128,10 +128,13 @@ async function villages(parentId: string, label: string, cc?: string): Promise<P
 }
 
 /** Whether a picked path is complete: inside the Sub-continent down to the village; abroad the country. */
-export function isComplete(path: Place[], leafHasChildren: boolean): boolean {
+export function isComplete(path: Place[], leafHasChildren: boolean, stopAtState = false): boolean {
   const leaf = path[path.length - 1];
   if (!leaf) return false;
   if (leaf.tier === 'country' && !SUBCONTINENT_IDS.includes(leaf.id)) return true;
+  // Birth location (website 2026-11-19, account_core.validate_birth_location): a Sub-continent birth
+  // ends at the State (or Province, Division…); the website refuses District/Tehsil/Village there.
+  if (stopAtState) return leaf.tier === 'state';
   return leaf.tier === 'village' || (!leafHasChildren && ORDER.indexOf(leaf.tier) >= ORDER.indexOf('district'));
 }
 
@@ -143,11 +146,11 @@ export function toStruct(path: Place[]): LocationStruct {
 }
 
 /** Walks down when a tier has exactly one hidden option (label null), e.g. Nepal's zone. */
-export async function autoDescend(path: Place[], onlySubcontinent: boolean): Promise<Place[]> {
+export async function autoDescend(path: Place[], onlySubcontinent: boolean, stopAtState = false): Promise<Place[]> {
   let current = path;
   for (let i = 0; i < 3; i++) {
     const leaf = current[current.length - 1];
-    if (!leaf || leaf.tier === 'village') return current;
+    if (!leaf || leaf.tier === 'village' || (stopAtState && leaf.tier === 'state')) return current;
     const kids = await childrenOf(leaf, onlySubcontinent);
     if (kids.length === 1 && kids[0].label === null) current = [...current, kids[0]];
     else return current;

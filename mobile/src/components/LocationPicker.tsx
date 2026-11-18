@@ -15,6 +15,7 @@ export function LocationPicker({
   onChange,
   onlySubcontinent = false,
   outsideSubcontinent = false,
+  stopAtState = false,
   onComplete,
 }: {
   path: Place[];
@@ -22,6 +23,8 @@ export function LocationPicker({
   onlySubcontinent?: boolean;
   /** Hide the 10 Sub-continent countries (a Global Account's Account ID request). */
   outsideSubcontinent?: boolean;
+  /** Birth location: end at the State in the Sub-continent (no District / Tehsil / Village). */
+  stopAtState?: boolean;
   /** Called whenever completeness changes. */
   onComplete?: (done: boolean) => void;
 }) {
@@ -29,7 +32,7 @@ export function LocationPicker({
   const [options, setOptions] = useState<Place[] | null>(null);
   const [error, setError] = useState<string>();
   const [search, setSearch] = useState('');
-  const done = !!leaf && options !== null && isComplete(path, options.length > 0);
+  const done = !!leaf && options !== null && isComplete(path, options.length > 0, stopAtState);
 
   useEffect(() => {
     onComplete?.(done);
@@ -41,11 +44,12 @@ export function LocationPicker({
     setSearch('');
     setError(undefined);
     (async () => {
-      const descended = await autoDescend(path, onlySubcontinent);
+      const descended = await autoDescend(path, onlySubcontinent, stopAtState);
       if (!live) return;
       if (descended.length !== path.length) return onChange(descended);
       const leafNow = descended[descended.length - 1] ?? null;
       if (leafNow?.tier === 'country' && !onlySubcontinent && !isSubcontinent(leafNow)) return setOptions([]);
+      if (stopAtState && leafNow?.tier === 'state') return setOptions([]);
       const kids = await childrenOf(leafNow, onlySubcontinent);
       setOptions(outsideSubcontinent ? excludeSubcontinent(kids) : kids);
     })().catch((e) => live && setError(String(e?.message ?? e)));

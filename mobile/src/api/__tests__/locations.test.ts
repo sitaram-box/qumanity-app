@@ -107,6 +107,29 @@ describe.skipIf(!has)('location tree (website data)', () => {
     expect(Object.keys(s).sort()).toEqual(['continent', 'country']); // never a fabricated zone/state/district/tehsil/village
   });
 
+  // 2026-11-19: Birth Location ends at the State in the Sub-continent (website
+  // account_core.validate_birth_location refuses District/Tehsil/Village there).
+  it('birth location (stopAtState): India is complete at the State, with no lower tiers in the payload', async () => {
+    const path = await walk(['Asia', 'India', 'Central State', 'Delhi'], true);
+    expect(path[path.length - 1].tier).toBe('state');
+    expect(L.isComplete(path, true, true)).toBe(true);
+    expect(L.isComplete(path.slice(0, -1), true, true)).toBe(false); // the zone alone isn't enough
+    expect(Object.keys(L.toStruct(path)).sort()).toEqual(['continent', 'country', 'state', 'zone']);
+  });
+
+  it('birth location (stopAtState): Maldives passes its hidden zone and state and stops there, never into an atoll', async () => {
+    const [asia] = await L.childrenOf(null, true);
+    const mdv = (await L.childrenOf(asia, true)).find((c) => c.id.endsWith('MDV'))!;
+    const path = await L.autoDescend([asia, mdv], true, true);
+    expect(path.map((p) => p.tier)).toEqual(['continent', 'country', 'zone', 'state']);
+    expect(L.isComplete(path, true, true)).toBe(true);
+  });
+
+  it('birth location abroad is still complete at the country with stopAtState', async () => {
+    const path = await walk(['Europe', 'France']);
+    expect(L.isComplete(path, false, true)).toBe(true);
+  });
+
   it('switching the present-location country FROM Japan back TO a Sub-continent country is not complete until the full chain is picked again', async () => {
     const path = await walk(['Asia', 'India']); // country-only, Subcontinent this time
     expect(L.isComplete(path, false)).toBe(false); // must keep drilling down to Village

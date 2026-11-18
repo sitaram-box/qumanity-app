@@ -27,8 +27,14 @@ import {
 } from "@/components/ui";
 import { rememberedId, rememberedPublicId } from "@/lib/remembered";
 import { useApp } from "@/state/app";
-import { birthTimeFields, religionFields, religionLabel } from "@/components/registration.logic";
+import { birthTimeFields, from24h, religionFields, religionLabel } from "@/components/registration.logic";
 import { colors, fonts, radius, space } from "@/theme";
+
+/** "21:05" → "9:05 PM", as it was entered. */
+const twelveHour = (tob: string) => {
+  const t = from24h(tob);
+  return t.period ? `${t.hour}:${t.minute} ${t.period}` : tob;
+};
 
 const GENDER = {
   male: "Male",
@@ -210,7 +216,7 @@ export default function Review() {
       ? ([["Middle name", draft.middleName]] as [string, string][])
       : []),
     ["Gender", GENDER[draft.gender]],
-    ["Born", draft.tobUnknown ? `${draft.dob} (birth time not known)` : `${draft.dob} at ${draft.tob}`],
+    ["Born", draft.tobUnknown ? `${draft.dob} (birth time not known)` : `${draft.dob} at ${twelveHour(draft.tob)}`],
     ...(draft.religion
       ? ([["Spiritual path", `${religionLabel(draft.religion)} (private)`]] as [string, string][])
       : []),
