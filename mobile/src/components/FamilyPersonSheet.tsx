@@ -5,15 +5,21 @@
  * (familyAdd.logic.ts). A new person is an unlinked placeholder ("Tap to link") until someone links
  * them. Uses the website's existing routes; the website checks permissions and its message is shown
  * as-is if it refuses.
+ *
+ * 2026-11-18 (website e8b85e7): the sheet reads the person's cascade, so relationships that already
+ * exist show as "View Spouse / View Children / View Siblings" (opening that family unit) and "Add
+ * Spouse" disappears once a spouse is recorded. While a new relative's name is typed, the website
+ * is asked whether that person is already on Qumanity; linking a match reuses their place in
+ * another tree ('join') or asks them to confirm ('notify') instead of adding a duplicate.
  */
 
 import { useEffect, useState } from 'react';
-import { Pressable, ScrollView, StyleSheet, Switch, Text, View } from 'react-native';
+import { Alert, Platform, Pressable, ScrollView, StyleSheet, Switch, Text, View } from 'react-native';
 import * as Q from '@/api/qumanity';
 import { colors, fonts, radius, space } from '@/theme';
 import { Avatar } from './Avatar';
 import { BottomSheet } from './BottomSheet';
-import { type AddOption } from './familyAdd.logic';
+import { relativeMatches, viewLinks, type AddOption, type CascadeLike, type RelativeMatch } from './familyAdd.logic';
 import { Button, Chip, ErrorText, Field, Label } from './ui';
 
 const GENDERS: { value: Q.Gender; label: string }[] = [
@@ -25,15 +31,19 @@ const GENDERS: { value: Q.Gender; label: string }[] = [
 export function FamilyPersonSheet({
   person,
   deceased,
-  options,
+  optionsFor,
   canLink,
   onLink,
   onClose,
   onAdded,
+  onOpenUnit,
 }: {
   person: Q.FamilyPerson | null;
   deceased: boolean;
-  options: AddOption[];
+  /** The Add options for this person, given what their cascade shows already exists. */
+  optionsFor: (cascade: CascadeLike | null) => AddOption[];
+  /** "View Spouse / Children / Siblings": open that family unit on the Family Tree screen. */
+  onOpenUnit: (groupId: number) => void;
   /** Alive and not on Qumanity yet: offer the existing Public-ID link. */
   canLink: boolean;
   onLink: () => void;
@@ -51,11 +61,44 @@ export function FamilyPersonSheet({
   const [motherPassed, setMotherPassed] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string>();
+  const [cascade, setCascade] = useState<Q.FamilyCascade | null>(null);
+  const [matches, setMatches] = useState<RelativeMatch[]>([]);
+  const [linkTo, setLinkTo] = useState<RelativeMatch | null>(null);
 
-  // Fresh form for each person / each option.
+  // Fresh form for each person / each option; their cascade for the View links (none if it can't
+  // be read — e.g. a relative outside your units; the Add options still work).
   useEffect(() => {
     setChoice(null);
+    setCascade(null);
+    if (!person) return;
+    let live = true;
+    Q.familyCascade(person.id).then(
+      (c) => live && setCascade(c),
+      () => undefined,
+    );
+    return () => {
+      live = false;
+    };
   }, [person?.id]);
+
+  // Is the person being added already on Qumanity? Asked a moment after typing stops.
+  useEffect(() => {
+    setMatches([]);
+    setLinkTo(null);
+    const n = name.trim();
+    if (!choice || choice.kind === 'parents' || n.length < 3) return;
+    let live = true;
+    const t = setTimeout(() => {
+      Q.familySuggest(n).then(
+        (r) => live && setMatches(relativeMatches(r.results as { type: string }[]).slice(0, 4)),
+        () => undefined,
+      );
+    }, 500);
+    return () => {
+      live = false;
+      clearTimeout(t);
+    };
+  }, [name, choice]);
   useEffect(() => {
     setName('');
     setPassed(false);
@@ -70,6 +113,24 @@ export function FamilyPersonSheet({
 
   if (!person) return null;
   const relation = person.is_viewer ? 'You' : person.relationship_to_viewer;
+  const options = optionsFor(cascade);
+  const views = viewLinks(cascade);
+
+  function askLink(m: RelativeMatch) {
+    const title = 'This person is already on Qumanity';
+    const text =
+      m.action === 'join'
+        ? `Would you like to link ${m.name}? Their existing place in the family tree is used, instead of adding them twice.`
+        : `Would you like to link ${m.name}? They'll be asked to confirm before it's final.`;
+    if (Platform.OS === 'web') {
+      if (globalThis.confirm?.(`${title}\n${text}`)) setLinkTo(m);
+      return;
+    }
+    Alert.alert(title, text, [
+      { text: 'No, add as new', style: 'cancel' },
+      { text: 'Link them', onPress: () => setLinkTo(m) },
+    ]);
+  }
   const isParents = choice?.kind === 'parents';
   const ready = isParents ? !!(father.trim() || mother.trim()) : !!(name.trim() && gender);
 
@@ -89,8 +150,15 @@ export function FamilyPersonSheet({
           gender: gender ?? undefined,
           is_deceased: passed,
           ...(choice.kind === 'child' ? { group_id: choice.groupId } : {}),
+          ...(linkTo ? { action: linkTo.action, matched_node_id: linkTo.matched_node_id, user_id: linkTo.user_id } : { action: 'create' as const }),
         });
-        onAdded(`Added ${name.trim()}${passed ? '' : ' — tap them to link their account if they are on Qumanity'}.`);
+        onAdded(
+          linkTo?.action === 'join'
+            ? `Linked ${linkTo.name} from their existing place in the family tree.`
+            : linkTo?.action === 'notify'
+              ? `Added ${name.trim()} — ${linkTo.name} has been asked to confirm.`
+              : `Added ${name.trim()}${passed ? '' : ' — tap them to link their account if they are on Qumanity'}.`,
+        );
       }
     } catch (e) {
       setError((e as Error).message); // the website's own reason, e.g. "Only an admin of this group can grow the tree here"
@@ -119,6 +187,17 @@ export function FamilyPersonSheet({
         <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={{ gap: space.sm }}>
           {canLink && !choice && <Button title="Link to account" icon="link" variant="soft" onPress={onLink} />}
 
+          {views.length > 0 && !choice && (
+            <>
+              <Label>Family</Label>
+              <View style={styles.row}>
+                {views.map((v) => (
+                  <Chip key={v.kind} label={v.label} icon="arrow-forward" onPress={() => onOpenUnit(v.groupId)} />
+                ))}
+              </View>
+            </>
+          )}
+
           {options.length > 0 ? (
             <>
               <Label>Add family member</Label>
@@ -135,6 +214,34 @@ export function FamilyPersonSheet({
           {choice && !isParents && (
             <>
               <Field label={`${choice.label}'s name`} value={name} onChangeText={setName} autoCapitalize="words" maxLength={80} />
+              {linkTo ? (
+                <View style={styles.linkCard}>
+                  <Text style={styles.linkTitle}>Linking {linkTo.name}</Text>
+                  <Text style={styles.meta}>
+                    {linkTo.action === 'join' ? 'Their existing place in the family tree is used.' : 'They will be asked to confirm.'}
+                  </Text>
+                  <Pressable onPress={() => setLinkTo(null)} accessibilityRole="button" hitSlop={6}>
+                    <Text style={styles.close}>Add as a new person instead</Text>
+                  </Pressable>
+                </View>
+              ) : (
+                matches.length > 0 && (
+                  <View style={styles.linkCard}>
+                    <Text style={styles.linkTitle}>Already on Qumanity?</Text>
+                    {matches.map((m) => (
+                      <Pressable key={m.key} onPress={() => askLink(m)} style={styles.match} accessibilityRole="button" accessibilityLabel={`Link ${m.name}`}>
+                        <View style={{ flex: 1 }}>
+                          <Text style={styles.matchName}>{m.name}</Text>
+                          <Text style={styles.meta} numberOfLines={2}>
+                            {m.detail}
+                          </Text>
+                        </View>
+                        <Text style={styles.close}>Link</Text>
+                      </Pressable>
+                    ))}
+                  </View>
+                )
+              )}
               <View style={styles.row}>
                 {GENDERS.map((g) => (
                   <Chip key={g.value} label={g.label} selected={gender === g.value} onPress={() => setGender(g.value)} />
@@ -187,4 +294,8 @@ const styles = StyleSheet.create({
   row: { flexDirection: 'row', flexWrap: 'wrap' },
   switchRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: 4, borderRadius: radius.md },
   switchText: { color: colors.text, fontFamily: fonts.body, fontSize: 14 },
+  linkCard: { borderWidth: 1, borderColor: colors.gold, borderRadius: radius.md, padding: space.md, gap: 6 },
+  linkTitle: { color: colors.text, fontFamily: fonts.bold, fontSize: 14 },
+  match: { flexDirection: 'row', alignItems: 'center', gap: space.sm, paddingVertical: 6, borderTopWidth: StyleSheet.hairlineWidth, borderColor: colors.line },
+  matchName: { color: colors.text, fontFamily: fonts.medium, fontSize: 14 },
 });

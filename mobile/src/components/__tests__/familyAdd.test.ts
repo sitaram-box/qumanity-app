@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { addOptions } from '../familyAdd.logic';
+import { addOptions, addOptionsWithCascade, moveItem, relativeMatches, viewLinks } from '../familyAdd.logic';
 
 const kinds = (opts: { kind: string }[]) => opts.map((o) => o.kind);
 const admin = (...ids: number[]) => (gid: number) => ids.includes(gid);
@@ -38,5 +38,65 @@ describe('Add family member: only options the website will accept', () => {
   it('not an admin anywhere: nothing to offer', () => {
     expect(addOptions('husband', unit, admin())).toEqual([]);
     expect(addOptions('child', unit, admin())).toEqual([]);
+  });
+});
+
+
+const cascade = (over: Partial<Parameters<typeof viewLinks>[0] & object> = {}) => ({
+  birth_group_id: 6,
+  siblings: [],
+  marital_group_id: null,
+  spouse: null,
+  children: [],
+  child_groups: [],
+  ...over,
+});
+
+describe('Person sheet: View links from the cascade', () => {
+  it('nothing recorded yet: no View links', () => {
+    expect(viewLinks(cascade())).toEqual([]);
+    expect(viewLinks(null)).toEqual([]);
+  });
+  it('spouse and children open the couple’s unit; siblings open the birth unit', () => {
+    const links = viewLinks(cascade({ spouse: {}, marital_group_id: 7, children: [{}], siblings: [{}] }));
+    expect(links.map((l) => [l.kind, l.groupId])).toEqual([
+      ['spouse', 7],
+      ['children', 7],
+      ['siblings', 6],
+    ]);
+  });
+  it('a married child (only in child_groups) still counts as children', () => {
+    expect(viewLinks(cascade({ spouse: {}, marital_group_id: 7, child_groups: [{}] })).map((l) => l.kind)).toContain('children');
+  });
+  it('a spouse already recorded removes Add Spouse; Add Sibling stays (siblings can be many)', () => {
+    const kinds = (c: ReturnType<typeof cascade>) => addOptionsWithCascade('child', unit, admin(7), c).map((o) => o.kind);
+    expect(kinds(cascade())).toEqual(['sibling', 'spouse']);
+    expect(kinds(cascade({ spouse: {}, marital_group_id: 9 }))).toEqual(['sibling']);
+  });
+});
+
+describe('Add flow: someone already on Qumanity', () => {
+  it('a placeholder in another tree → join; an account → notify; other kinds ignored', () => {
+    const m = relativeMatches([
+      { type: 'group', matched_node_id: 41, matched_name: 'Kamla Sharma', group_name: 'MOMA-KAMA-Sharma Family', husband_name: 'Mohan', wife_name: 'Kamla' },
+      { type: 'unactivated_user', user_id: 900, name: 'Kamla S' },
+      { type: 'real_user', user_id: 901, name: 'Kamla Devi', location: 'Bawana, Delhi' },
+      { type: 'none' },
+    ]);
+    expect(m.map((x) => [x.action, x.matched_node_id ?? x.user_id])).toEqual([
+      ['join', 41],
+      ['notify', 900],
+      ['notify', 901],
+    ]);
+    expect(m[0].detail).toContain('Mohan & Kamla');
+    expect(m[2].detail).toBe('On Qumanity · Bawana, Delhi');
+  });
+});
+
+describe('Sibling order', () => {
+  it('moves one place up or down, never past either end', () => {
+    expect(moveItem(['a', 'b', 'c'], 2, -1)).toEqual(['a', 'c', 'b']);
+    expect(moveItem(['a', 'b', 'c'], 0, -1)).toEqual(['a', 'b', 'c']);
+    expect(moveItem(['a', 'b', 'c'], 2, 1)).toEqual(['a', 'b', 'c']);
   });
 });

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { BOX_H, layoutWholeTree, shortName, type CascadeLike, type TreePerson } from '../familyWholeTree.logic';
+import { BOX_H, centreIndex, layoutWholeTree, shortName, type CascadeLike, type TreePerson } from '../familyWholeTree.logic';
 
 const P = (id: number, name: string, extra: Partial<TreePerson> = {}): TreePerson => ({ id, name, is_deceased: false, is_viewer: false, ...extra });
 
@@ -124,5 +124,42 @@ describe('Whole tree centred on someone else', () => {
     expect(hint(41)).toBe("Mohan's spouse");
     expect(hint(43)).toBe("Mohan's child");
     expect(hint(14)).toBeUndefined(); // in the married child's couple: no guessing
+  });
+});
+
+
+describe('Whole tree: the centre person among their siblings (eldest left)', () => {
+  const sib = (id: number, age: number | null) => ({ ...P(id, `S${id}`), age_years: age });
+  it('by age when everyone has one', () => {
+    const c = { node: { ...arjun, age_years: 30 }, siblings: [sib(1, 40), sib(2, 35), sib(3, 20)] };
+    expect(centreIndex(c)).toBe(2);
+  });
+  it('someone with a known age comes before someone without (website rule)', () => {
+    const v = { ...P(20, 'Vikram'), age_years: null, birth_order: 1 };
+    expect(centreIndex({ node: { ...arjun, age_years: 41, birth_order: 0 }, siblings: [v] })).toBe(0);
+    expect(centreIndex({ node: { ...arjun, age_years: null }, siblings: [{ ...v, age_years: 30 }] })).toBe(1);
+  });
+  it('by the order an admin set (birth_order) when ages are unknown; a sibling with an age comes first', () => {
+    const bo = (id: number, order: number | null, age: number | null = null) => ({ ...P(id, `S${id}`), birth_order: order, age_years: age });
+    expect(centreIndex({ node: { ...arjun, birth_order: 0 }, siblings: [bo(1, 1)] })).toBe(0);
+    expect(centreIndex({ node: { ...arjun, birth_order: 2 }, siblings: [bo(1, 0), bo(2, 1), bo(3, 3)] })).toBe(2);
+    expect(centreIndex({ node: { ...arjun, birth_order: 0 }, siblings: [bo(1, null, 50), bo(2, 1)] })).toBe(1);
+  });
+  it('mixed: older siblings with an age first, then the centre (age known), then undated siblings', () => {
+    expect(centreIndex({ node: { ...arjun, age_years: 30 }, siblings: [sib(1, 40), sib(2, null)] })).toBe(1);
+    expect(centreIndex({ node: { ...arjun, age_years: 30 }, siblings: [sib(1, null), sib(2, 20)] })).toBe(0);
+  });
+  it('nothing known about the centre person: after the siblings', () => {
+    expect(centreIndex({ node: arjun, siblings: [sib(1, 40)] })).toBe(1);
+    expect(centreIndex({ node: arjun, siblings: [sib(1, null)] })).toBe(1);
+  });
+  it('the layout puts the centre couple at that place in the row (or where a saved order says)', () => {
+    const row = (at?: number) =>
+      layoutWholeTree({ ...me, siblings: [P(30, 'Vikram'), P(31, 'Ravi')] }, priyaSide, at)
+        .boxes.filter((b) => b.y === layoutWholeTree(me, priyaSide).boxes.find((x) => x.person.id === 14)!.y)
+        .map((b) => b.person.name.split(' ')[0]);
+    expect(row()).toEqual(['Vikram', 'Ravi', 'Arjun', 'Priya']);
+    expect(row(0)).toEqual(['Arjun', 'Priya', 'Vikram', 'Ravi']);
+    expect(row(1)).toEqual(['Vikram', 'Arjun', 'Priya', 'Ravi']);
   });
 });

@@ -38,7 +38,7 @@ import { PublicIdInvite } from '@/components/PublicIdInvite';
 import { BackHeader, Button, ErrorText, Lead, Screen, SectionTitle } from '@/components/ui';
 import { colors, fonts, radius, space, timelineColors, tint } from '@/theme';
 import { FamilyPersonSheet } from '@/components/FamilyPersonSheet';
-import { addOptions, type Role } from '@/components/familyAdd.logic';
+import { addOptionsWithCascade, moveItem, type Role } from '@/components/familyAdd.logic';
 
 const ACCENT = timelineColors.personal;
 
@@ -64,6 +64,10 @@ export default function FamilyTree() {
   // The person sheet (tap anyone in the unit) and a one-line result after adding someone
   const [sheet, setSheet] = useState<{ person: Q.FamilyPerson; role: Role; deceased: boolean } | null>(null);
   const [notice, setNotice] = useState<string>();
+  // Reordering the unit's children (eldest first), admins only.
+  const [order, setOrder] = useState<Q.FamilyPerson[] | null>(null);
+  const [orderBusy, setOrderBusy] = useState(false);
+  const [orderMsg, setOrderMsg] = useState<string>();
   // Set once the first unit opens. The focus effect below runs again whenever you come back to this
   // screen (from Whole tree, a chat…); its closure only ever sees the first `unit` (null), so without
   // this it would jump back to your own unit and drop the trail.
@@ -166,6 +170,26 @@ export default function FamilyTree() {
     if (!unit) return;
     const centre = [unit.husband, unit.wife, ...unit.unmarried_children].find((p) => p?.is_viewer) ?? unit.husband ?? unit.wife;
     if (centre) router.push({ pathname: '/family-whole-tree', params: { node: String(centre.id), name: centre.is_viewer ? 'you' : centre.name } });
+  }
+
+  // Saves the chosen order as birth order 0, 1, 2… (eldest first), then reloads the unit. A child
+  // whose date of birth is known is always placed by it, whatever is chosen here.
+  async function saveOrder() {
+    if (!order || !unit) return;
+    setOrderBusy(true);
+    setOrderMsg(undefined);
+    try {
+      for (let i = 0; i < order.length; i++) await Q.familySetBirthOrder(order[i].id, i);
+      const n = await Q.familyNeighborhood(unit.group_id);
+      setUnit(n);
+      const same = n.unmarried_children.every((c, i) => c.id === order[i]?.id);
+      setOrder(null);
+      setNotice(same ? 'Order saved.' : 'Order saved. Children whose date of birth is known are placed by it.');
+    } catch (e) {
+      setOrderMsg((e as Error).message);
+    } finally {
+      setOrderBusy(false);
+    }
   }
 
   function openPerson(person: Q.FamilyPerson, role: Role, deceased: boolean) {
@@ -346,7 +370,26 @@ export default function FamilyTree() {
           {(unit.unmarried_children.length > 0 || unit.child_groups.length > 0) && (
             <>
               <View style={styles.connector} />
-              <SectionTitle>Children</SectionTitle>
+              {/* Eldest on the left: the website sends children oldest first (date of birth, else the order
+                  an admin set here). */}
+              <SectionTitle
+                right={
+                  unit.is_admin && unit.unmarried_children.length > 1 ? (
+                    <Pressable
+                      onPress={() => {
+                        setOrderMsg(undefined);
+                        setOrder(unit.unmarried_children);
+                      }}
+                      accessibilityRole="button"
+                      hitSlop={8}
+                    >
+                      <Text style={styles.close}>Reorder</Text>
+                    </Pressable>
+                  ) : undefined
+                }
+              >
+                Children
+              </SectionTitle>
               {unit.unmarried_children.length > 0 && (
                 <View style={styles.childRow}>
                   {unit.unmarried_children.map((c) => (
@@ -397,10 +440,54 @@ export default function FamilyTree() {
         <ErrorText>{linkErr}</ErrorText>
       </BottomSheet>
 
+      <BottomSheet visible={!!order} onClose={() => setOrder(null)} style={styles.sheet}>
+        <View style={styles.sheetHead}>
+          <Text style={styles.sheetTitle}>Order of the children</Text>
+          <Pressable onPress={() => setOrder(null)} accessibilityRole="button" accessibilityLabel="Close" hitSlop={10}>
+            <Text style={styles.close}>Close</Text>
+          </Pressable>
+        </View>
+        <Text style={styles.metaText}>Eldest first. A child whose date of birth is known is always placed by it.</Text>
+        {order?.map((c, i) => (
+          <View key={c.id} style={styles.orderRow}>
+            <Text style={styles.orderNo}>{i + 1}</Text>
+            <Text style={styles.orderName} numberOfLines={1}>
+              {c.name}
+            </Text>
+            <Pressable
+              onPress={() => setOrder((o) => (o ? moveItem(o, i, -1) : o))}
+              disabled={i === 0}
+              accessibilityRole="button"
+              accessibilityLabel={`Move ${c.name} earlier`}
+              hitSlop={6}
+              style={[styles.orderBtn, i === 0 && { opacity: 0.3 }]}
+            >
+              <Ionicons name="arrow-up" size={18} color={colors.gold} />
+            </Pressable>
+            <Pressable
+              onPress={() => setOrder((o) => (o ? moveItem(o, i, 1) : o))}
+              disabled={i === order.length - 1}
+              accessibilityRole="button"
+              accessibilityLabel={`Move ${c.name} later`}
+              hitSlop={6}
+              style={[styles.orderBtn, i === order.length - 1 && { opacity: 0.3 }]}
+            >
+              <Ionicons name="arrow-down" size={18} color={colors.gold} />
+            </Pressable>
+          </View>
+        ))}
+        <ErrorText>{orderMsg}</ErrorText>
+        <Button title="Save order" icon="checkmark" onPress={saveOrder} busy={orderBusy} />
+      </BottomSheet>
+
       <FamilyPersonSheet
         person={sheet?.person ?? null}
         deceased={!!sheet?.deceased}
-        options={sheet && unit ? addOptions(sheet.role, unit, adminOf) : []}
+        optionsFor={(c) => (sheet && unit ? addOptionsWithCascade(sheet.role, unit, adminOf, c) : [])}
+        onOpenUnit={(groupId) => {
+          setSheet(null);
+          if (unit && groupId !== unit.group_id) open(groupId, '');
+        }}
         canLink={!!sheet && !sheet.person.claimed && !sheet.deceased}
         onLink={() => {
           const p = sheet?.person;
@@ -628,6 +715,10 @@ const styles = StyleSheet.create({
   sheetHead: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   sheetTitle: { flex: 1, color: colors.text, fontFamily: fonts.bold, fontSize: 17 },
   close: { color: colors.gold, fontFamily: fonts.medium },
+  orderRow: { flexDirection: 'row', alignItems: 'center', gap: space.sm, paddingVertical: 6, borderBottomWidth: StyleSheet.hairlineWidth, borderColor: colors.line },
+  orderNo: { width: 22, color: colors.faint, fontFamily: fonts.bold, fontSize: 13 },
+  orderName: { flex: 1, color: colors.text, fontFamily: fonts.medium, fontSize: 15 },
+  orderBtn: { width: 34, height: 34, borderRadius: 17, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.panelRaised },
   wholeBtn: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: space.sm },
   wholeText: { color: colors.gold, fontFamily: fonts.medium, fontSize: 13 },
   metaText: { color: colors.dim, fontFamily: fonts.body, fontSize: 13, lineHeight: 19 },

@@ -21,6 +21,10 @@ export interface TreePerson {
   is_deceased: boolean;
   is_viewer: boolean;
   relationship_to_viewer?: string | null;
+  /** Used to place the centre person among their siblings (website sends siblings eldest first). */
+  age_years?: number | null;
+  /** A family admin's manual order among siblings (0 = eldest); website 7567c2f. */
+  birth_order?: number | null;
 }
 interface Couple {
   husband: TreePerson | null;
@@ -75,7 +79,26 @@ const coupleItem = (id: string, c: Couple | null | undefined): Item | null => {
 };
 const itemWidth = (it: Item) => it.people.length * BOX_W + (it.people.length - 1) * PARTNER_GAP;
 
-export function layoutWholeTree(me: CascadeLike, spouseSide: CascadeLike | null): TreeLayout {
+/**
+ * Where the centre person stands among their siblings (0 = eldest), left to right. The website
+ * sends the siblings eldest first but leaves the centre person out of that list, so this counts
+ * the siblings the website would put before them, using its own order (family_core
+ * _sort_people_by_birth): anyone with a known date of birth comes first, oldest first; then the
+ * order a family admin set (birth_order); then everyone else. Ages stand in for dates of birth.
+ */
+export function centreIndex(me: Pick<CascadeLike, 'node' | 'siblings'>): number {
+  const c = me.node;
+  const before = (s: TreePerson): boolean => {
+    if (s.age_years != null && c.age_years != null) return s.age_years >= c.age_years;
+    if (s.age_years != null || c.age_years != null) return s.age_years != null; // a known age comes first
+    if (s.birth_order != null && c.birth_order != null) return s.birth_order < c.birth_order;
+    if (s.birth_order != null || c.birth_order != null) return s.birth_order != null; // a set order comes next
+    return true; // neither known: keep the centre person after
+  };
+  return me.siblings.filter(before).length;
+}
+
+export function layoutWholeTree(me: CascadeLike, spouseSide: CascadeLike | null, centreAt?: number): TreeLayout {
   const gp = (c: CascadeLike | null, side: 'paternal' | 'maternal', who: string) =>
     coupleItem(`gp-${who}-${side}`, c?.grandparent_groups.find((g) => g.side === side));
   const parentsOf = (c: CascadeLike | null, who: string) =>
@@ -91,11 +114,22 @@ export function layoutWholeTree(me: CascadeLike, spouseSide: CascadeLike | null)
   const rows: Item[][] = [
     [gp(me, 'paternal', 'me'), gp(me, 'maternal', 'me'), gp(sp, 'paternal', 'sp'), gp(sp, 'maternal', 'sp')].filter((x): x is Item => !!x),
     [parentsOf(me, 'me'), spParents].filter((x): x is Item => !!x),
-    [
-      ...me.siblings.map((p) => ({ id: `sib-me-${p.id}`, people: [p] })),
-      { id: 'core', people: spouse ? [me.node, spouse] : [me.node], hint: (p: TreePerson) => (p.id === spouse?.id ? `${centreFirst}'s spouse` : undefined) },
-      ...(sp?.siblings ?? []).map((p) => ({ id: `sib-sp-${p.id}`, people: [p], hint: () => `${spouseFirst}'s sibling` })),
-    ],
+    (() => {
+      // The centre person's siblings eldest first (left), with the centre couple in its place.
+      const sibs: Item[] = me.siblings.map((p) => ({ id: `sib-me-${p.id}`, people: [p] }));
+      const at = Math.max(0, Math.min(sibs.length, centreAt ?? centreIndex(me)));
+      const core: Item = {
+        id: 'core',
+        people: spouse ? [me.node, spouse] : [me.node],
+        hint: (p: TreePerson) => (p.id === spouse?.id ? `${centreFirst}'s spouse` : undefined),
+      };
+      return [
+        ...sibs.slice(0, at),
+        core,
+        ...sibs.slice(at),
+        ...(sp?.siblings ?? []).map((p) => ({ id: `sib-sp-${p.id}`, people: [p], hint: () => `${spouseFirst}'s sibling` })),
+      ];
+    })(),
     [
       ...me.children.map((p) => ({ id: `ch-${p.id}`, people: [p], hint: () => `${centreFirst}'s child` })),
       ...me.child_groups.map((g, i) => coupleItem(`cg-${i}`, g)).filter((x): x is Item => !!x),
@@ -132,10 +166,13 @@ export function layoutWholeTree(me: CascadeLike, spouseSide: CascadeLike | null)
   });
 
   const links: TreeLink[] = [];
-  const link = (fromItem: string, to: { x: number; y: number } | undefined, key: string) => {
+  // `at` = how far down the gap the horizontal part of the line runs. The spouse's family uses a
+  // different height from the centre person's, so when the couple sits among the centre person's
+  // siblings the two families' lines don't merge into one bar.
+  const link = (fromItem: string, to: { x: number; y: number } | undefined, key: string, at = 0.5) => {
     const a = itemBottom.get(fromItem);
     if (!a || !to) return;
-    const mid = a.y + (to.y - a.y) / 2;
+    const mid = a.y + (to.y - a.y) * at;
     links.push({ key, d: `M${a.x} ${a.y} V${mid} H${to.x} V${to.y}` });
   };
   const to = (itemId: string, personId?: number) =>
@@ -144,12 +181,13 @@ export function layoutWholeTree(me: CascadeLike, spouseSide: CascadeLike | null)
   for (const [c, who] of [[me, 'me'], [sp, 'sp']] as const) {
     if (!c) continue;
     const centre = who === 'me' ? me.node : spouse!;
+    const at = who === 'me' ? 0.35 : 0.7;
     // Grandparents → the father (paternal) or mother (maternal) in the parents' couple.
-    link(`gp-${who}-paternal`, to(`p-${who}`, c.parents?.father?.id), `l-gp-${who}-p`);
-    link(`gp-${who}-maternal`, to(`p-${who}`, c.parents?.mother?.id), `l-gp-${who}-m`);
+    link(`gp-${who}-paternal`, to(`p-${who}`, c.parents?.father?.id), `l-gp-${who}-p`, at);
+    link(`gp-${who}-maternal`, to(`p-${who}`, c.parents?.mother?.id), `l-gp-${who}-m`, at);
     // Parents → each child of theirs in row 3 (siblings and the centre person).
-    for (const s of c.siblings) link(`p-${who}`, to(`sib-${who}-${s.id}`), `l-p-${who}-${s.id}`);
-    link(`p-${who}`, to('core', centre.id), `l-p-${who}-core`);
+    for (const s of c.siblings) link(`p-${who}`, to(`sib-${who}-${s.id}`), `l-p-${who}-${s.id}`, at);
+    link(`p-${who}`, to('core', centre.id), `l-p-${who}-core`, at);
   }
   // The couple → each child.
   for (const ch of me.children) link('core', to(`ch-${ch.id}`), `l-ch-${ch.id}`);

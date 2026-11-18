@@ -891,6 +891,11 @@ export interface FamilyPerson {
   /** e.g. "Father", "Son", "Spouse" (website family_core._relationship_label); null for yourself
    * or a relative outside the named list. */
   relationship_to_viewer?: string | null;
+  /** A family admin's manual order among siblings (0 = eldest), used when no date of birth is known (website 7567c2f). */
+  birth_order?: number | null;
+  /** Unclaimed people only: an estimated date of birth (website 7567c2f). */
+  dob_approx?: string | null;
+  age_years?: number | null;
 }
 export interface FamilyUnitBrief {
   group_id: number;
@@ -950,12 +955,25 @@ export interface FamilyNewPerson {
   name: string;
   gender?: Gender;
   is_deceased?: boolean;
+  /**
+   * Website e8b85e7 (merge-aware relations): 'create' a new placeholder (the default); 'join' reuse
+   * a placeholder already in another tree (matched_node_id; only while nobody has claimed it);
+   * 'notify' ask someone already on Qumanity to confirm (user_id) — a placeholder holds their place
+   * until they accept. Stops the same person being added twice in separate trees.
+   */
+  action?: 'create' | 'join' | 'notify';
+  matched_node_id?: number;
+  user_id?: number;
 }
 /** Add a child / sibling / spouse to a person in the tree (website 2026-11-01 profile-card routes).
  * The server checks who may do it (admin of the right unit) and explains any refusal.
  * `group_id` (child only): which of the person's units the child belongs to — the one in view. */
 export const familyAddRelative = (kind: 'child' | 'sibling' | 'spouse', nodeId: number, body: FamilyNewPerson & { group_id?: number }) =>
-  api<{ node_id?: number; group_id?: number }>(`/api/family/person/${nodeId}/${kind}`, { body });
+  api<{ node_id?: number; group_id?: number; notified?: { name: string; user_id: number }[] }>(`/api/family/person/${nodeId}/${kind}`, { body });
+/** A manual birth order among siblings (0 = eldest), used only where no date of birth is known —
+ * a known date always decides (website family_core._sort_people_by_birth). null clears it. */
+export const familySetBirthOrder = (nodeId: number, birth_order: number | null) =>
+  api<{ status: string }>(`/api/family/node/${nodeId}/birth-order`, { body: { birth_order } });
 /** One person's own family as the tree knows it (website family_core.cascade_for_node): their
  * parents' unit and siblings, both grandparent units (tagged paternal / maternal), their spouse,
  * unmarried children and married children's units. Read-only, one generation each way of the
