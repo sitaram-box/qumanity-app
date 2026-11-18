@@ -3,9 +3,11 @@
  * (2026-11-18): gender as percentage bars, age as bars, the four elements as a donut with a legend,
  * and the twelve sun signs as four pies — one per element, its three signs inside. Percentages are
  * of everyone living here; a count of 1-4 stays "<5" (website privacy rule), and with fewer than 5
- * people in the place no breakdown is shown at all. Chart maths: components/statsCharts.logic.ts.
+ * people in the place no breakdown is shown at all — the sections stay, each saying why it's empty.
+ * Chart maths: components/statsCharts.logic.ts.
  */
 
+import { Ionicons } from '@expo/vector-icons';
 import { useLocalSearchParams } from 'expo-router';
 import { useEffect, useState } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
@@ -57,7 +59,18 @@ export default function PlaceStats() {
               </Text>
             )}
           </View>
-          {!hidden && (
+          {hidden ? (
+            // The same sections, each saying why it's empty, so the page keeps its shape.
+            ['Gender', 'Elements', 'Sun signs', 'Age'].map((t) => (
+              <View key={t} style={styles.card}>
+                <Label>{t}</Label>
+                <View style={styles.lockedRow}>
+                  <Ionicons name={isSuppressed(total) ? 'lock-closed-outline' : 'people-outline'} size={16} color={colors.faint} />
+                  <Text style={styles.locked}>{isSuppressed(total) ? 'Hidden until 5 or more people live here.' : 'No one to count yet.'}</Text>
+                </View>
+              </View>
+            ))
+          ) : (
             <>
               <GenderBars stats={stats} />
               <ElementDonut stats={stats} />
@@ -197,6 +210,8 @@ function SignPies({ stats }: { stats: Q.PlaceStats }) {
 const styles = StyleSheet.create({
   card: { backgroundColor: colors.panel, borderRadius: radius.lg, padding: space.lg, marginBottom: space.md },
   big: { color: colors.gold, fontFamily: fonts.displayBold, fontSize: 28 },
+  lockedRow: { flexDirection: 'row', alignItems: 'center', gap: space.sm, marginTop: 4 },
+  locked: { flex: 1, color: colors.faint, fontFamily: fonts.body, fontSize: 13 },
   note: { color: colors.dim, fontFamily: fonts.body, fontSize: 12.5, lineHeight: 17, marginTop: 4 },
   barRow: { flexDirection: 'row', alignItems: 'center', gap: space.sm, marginVertical: 4 },
   barLabel: { width: 96, color: colors.dim, fontFamily: fonts.body, fontSize: 13 },

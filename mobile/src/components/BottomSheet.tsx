@@ -14,7 +14,7 @@
  */
 
 import type { ReactNode } from 'react';
-import { KeyboardAvoidingView, Modal, Platform, StyleSheet, View, type StyleProp, type ViewStyle } from 'react-native';
+import { KeyboardAvoidingView, Modal, StyleSheet, View, type StyleProp, type ViewStyle } from 'react-native';
 import { SafeAreaProvider, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { colors } from '@/theme';
 
@@ -33,7 +33,11 @@ export function BottomSheet({
   return (
     <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
       <SafeAreaProvider>
-        <KeyboardAvoidingView style={styles.backdrop} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+        {/* Both platforms: the sheet rises above the keyboard. Android was left out before, so on a
+            phone the keyboard covered the sheet's text boxes (e.g. Add family member). A Modal is its own
+            window, outside the app-wide keyboard handling in app/_layout.tsx, so it has to do this
+            itself; "padding" measures the real overlap, so it never adds space twice. */}
+        <KeyboardAvoidingView style={styles.backdrop} behavior="padding">
           <View style={[styles.sheet, style]}>
             {children}
             <NavBarSpacer />

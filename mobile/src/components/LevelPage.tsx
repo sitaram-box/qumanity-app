@@ -93,8 +93,9 @@ export function LevelPage({ accent, levels }: { title?: string; note?: string; a
           <View style={[styles.placeIcon, { backgroundColor: tint(accent) }]}>
             <Ionicons name={level === 'earth' ? 'earth' : level === 'village' ? 'home' : 'location'} size={17} color={accent} />
           </View>
+          {/* The name gets the card's full width (up to two lines): beside the three stats it was squeezed
+              to a few letters on a phone with larger text ("Roh / ini …"), so the stats have their own row. */}
           <View style={{ flex: 1 }}>
-            {/* Up to two lines, so long names ("Rohini Sector 24", "North West Delhi") are readable. */}
             <Text style={styles.placeName} numberOfLines={2}>
               {placeName}
             </Text>
@@ -103,6 +104,8 @@ export function LevelPage({ accent, levels }: { title?: string; note?: string; a
             </Text>
             {placeId && level !== 'earth' ? <PlaceId id={placeId} /> : null}
           </View>
+        </View>
+        <View style={styles.stats}>
           <Stat icon="people" value={members} label="members" />
           <Stat qoin value={wallet} label="Qoins" />
           <Stat icon="ribbon" value={karma} label="Karma" />
@@ -178,7 +181,10 @@ function Action({ icon, label, onPress }: { icon: React.ComponentProps<typeof Io
   return (
     <Pressable onPress={onPress} style={({ pressed }) => [styles.action, pressed && { backgroundColor: colors.line }]} accessibilityRole="button" accessibilityLabel={label}>
       <Ionicons name={icon} size={15} color={colors.gold} />
-      <Text style={styles.actionText}>{label}</Text>
+      {/* One line, shrinking to fit when the phone's text size is large ("Local Areas" overflowed its button). */}
+      <Text style={styles.actionText} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.7}>
+        {label}
+      </Text>
     </Pressable>
   );
 }
@@ -206,7 +212,8 @@ const styles = StyleSheet.create({
   placeLevel: { color: colors.faint, fontFamily: fonts.body, fontSize: 11.5, marginTop: 1 },
   idRow: { flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 2, alignSelf: 'flex-start' },
   placeId: { color: colors.faint, fontFamily: fonts.medium, fontSize: 10.5, letterSpacing: 0.3 },
-  stat: { alignItems: 'flex-end', minWidth: 52 },
+  stats: { flexDirection: 'row', justifyContent: 'space-around', paddingVertical: 2 },
+  stat: { alignItems: 'center', minWidth: 52 },
   statTop: { flexDirection: 'row', alignItems: 'center', gap: 3 },
   qoin: { fontSize: 11 },
   statValue: { color: colors.text, fontFamily: fonts.bold, fontSize: 14 },
@@ -221,7 +228,8 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     gap: 5,
+    paddingHorizontal: 6,
   },
-  actionText: { color: colors.text, fontFamily: fonts.medium, fontSize: 12.5 },
+  actionText: { flexShrink: 1, color: colors.text, fontFamily: fonts.medium, fontSize: 12.5 },
   boardWrap: { flex: 1, paddingHorizontal: space.lg, paddingTop: space.sm },
 });
