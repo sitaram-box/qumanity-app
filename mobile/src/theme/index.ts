@@ -9,7 +9,7 @@
 
 export const colors = {
   // surfaces, darkest → lightest
-  ink: '#060c16', // app background
+  ink: '#0A1929', // app background
   panel: '#0d1827', // cards, bars
   panelRaised: '#15233a', // controls on cards, pressed rows
   line: '#1f3049', // hairlines, borders
@@ -19,8 +19,8 @@ export const colors = {
   faint: '#6a7c93',
   // brand
   saffron: '#ff9933',
-  gold: '#ffc83d',
-  goldSoft: '#ffc83d1f',
+  gold: '#FFD700',
+  goldSoft: '#FFD7001f',
   // elements
   fire: '#ff6b4a',
   earth: '#4fcf73',
