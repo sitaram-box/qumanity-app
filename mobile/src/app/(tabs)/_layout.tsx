@@ -13,12 +13,15 @@ type Icon = ComponentProps<typeof Ionicons>['name'];
 // silently ignored and the app would open on Global); this export is the supported way.
 export const unstable_settings = { initialRouteName: 'public' };
 
-/** Dashboard: the 4 timelines, in the website's order. */
+/** Dashboard: the 4 timelines, in the website's order, plus Chat (2026-11-24, Unified Chat
+ * Architecture Step 3) -- the one new tab, not a 5th timeline; it reads across all of them
+ * (chat_core.list_my_conversations()) rather than belonging to just one. */
 const TABS: { name: string; title: string; icon: Icon; color: string }[] = [
   { name: 'global', title: 'Global', icon: 'earth', color: timelineColors.global },
   { name: 'public', title: 'Public', icon: 'people', color: timelineColors.public },
   { name: 'personal', title: 'Personal', icon: 'heart', color: timelineColors.personal },
   { name: 'private', title: 'Private', icon: 'lock-closed', color: timelineColors.private },
+  { name: 'chat', title: 'Chat', icon: 'chatbubbles', color: colors.gold },
 ];
 
 export default function TabsLayout() {

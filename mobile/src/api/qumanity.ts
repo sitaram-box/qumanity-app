@@ -426,6 +426,35 @@ export function chatSend(kind: ChatKind, id: number, text: string) {
   return api<{ status: string }>(path, { body: { text } });
 }
 
+// ---------- Unified Chat Architecture (website chat_core.py, 2026-11-24) ----------
+// The read-side aggregator across all five ChatKinds above -- one list, each row tagged with
+// exactly the `kind`/`id` chatLoad()/chatSend() already dispatch on, so opening a row from this
+// list is the same navigation every existing per-context list screen (private-groups.tsx,
+// Local Areas, Family Tree) already does, not a new mechanism.
+export type ConversationPane = 'private' | 'channel';
+export interface Conversation {
+  kind: ChatKind;
+  id: number;
+  title: string;
+  pane: ConversationPane;
+  location_id: string | null;
+  location_level: BoardLevel | null;
+  other_user_id?: number; // 'private' rows only -- whose presence dot to show
+  last_message_at: string | null;
+  unread_count: number;
+}
+export function chatConversations() {
+  return api<{ conversations: Conversation[] }>('/api/chat/conversations');
+}
+
+/** 'green' | 'yellow' | 'grey' | 'red' -- see the website's chat_core.presence_status() for the
+ * exact thresholds (computed live from last_seen_at, never a stored status). */
+export type PresenceStatus = 'green' | 'yellow' | 'grey' | 'red';
+export function presenceBatch(userIds: number[]) {
+  if (!userIds.length) return Promise.resolve({ statuses: {} as Record<number, PresenceStatus> });
+  return api<{ statuses: Record<number, PresenceStatus> }>(`/api/presence/batch?user_ids=${userIds.join(',')}`);
+}
+
 // ---------- Local Areas (website local_area_core, 2026-11-18) ----------
 // Neighbourhoods inside a village, each with its own chat. A member is in at most one; the first
 // join is free, every later one (moving, or rejoining after leaving) needs the village's Nayak /
