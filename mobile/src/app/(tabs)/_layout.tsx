@@ -54,10 +54,11 @@ export default function TabsLayout() {
   // countries, so it has no Village/Tehsil/.../Zone group at all -- the website's own Dashboard
   // hides the Public tab/panel entirely for the same reason (templates/dashboard.html's
   // `{% if not profile.is_global_account %}`). `me.is_global_account` is server-derived, never
-  // decided here. `unstable_settings.initialRouteName` above stays 'public' for a Public Account
-  // (the common case); a Global Account's actual initial tab is still its first VISIBLE one
-  // (Global), since expo-router's <Tabs> falls back to the first rendered screen when the
-  // configured initial route isn't present.
+  // decided here. `unstable_settings.initialRouteName` above stays 'home' regardless (2026-11-25
+  // mobile redesign -- was 'public' for a Public Account before that change); a Global Account's
+  // actual initial tab is still whichever one is first VISIBLE, since expo-router's <Tabs> falls
+  // back to the first rendered screen when the configured initial route isn't present -- not a
+  // concern in practice here, since 'home' is never filtered out for a Global Account.
   const tabs = me?.is_global_account ? TABS.filter((t) => t.name !== 'public') : TABS;
 
   return (
