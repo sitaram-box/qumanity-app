@@ -15,6 +15,7 @@ import * as Q from '@/api/qumanity';
 import { useApp } from '@/state/app';
 import { colors, fonts, radius, space, tint } from '@/theme';
 import { BoardView } from './Board';
+import { ContactAgentSheet } from './ContactAgentSheet';
 import { ElectionSentimentCard } from './ElectionSentimentCard';
 import { GroupsSheet } from './GroupsSheet';
 import { PerceptionCard } from './PerceptionCard';
@@ -51,6 +52,7 @@ export function LevelPage({ accent, levels }: { title?: string; note?: string; a
   const [currency, setCurrency] = useState('₹');
   const [council, setCouncil] = useState(false);
   const [groups, setGroups] = useState(false);
+  const [contactAgent, setContactAgent] = useState(false);
   const placeId = placeIdAt(struct, level);
   const placeName = level === 'earth' ? 'Earth' : ((struct[level]?.name as string | undefined) ?? LABEL[level]);
 
@@ -110,14 +112,23 @@ export function LevelPage({ accent, levels }: { title?: string; note?: string; a
           <Stat qoin value={wallet} label="Qoins" />
           <Stat icon="ribbon" value={karma} label="Karma" />
         </View>
-        <View style={styles.actions}>
+        {/* Contact Agent (2026-11-25) is village-only -- Cases are village-scoped
+            (case_core.qumanity_cases.location_level), so it only ever competes for this row's
+            space at the one level where it applies. Wraps to a second row of 2 rather than
+            squeezing 4 equally-flexed buttons into one -- "Local Areas" already needed
+            adjustsFontSizeToFit/minimumFontScale at 3 items. */}
+        <View style={[styles.actions, level === 'village' && styles.actionsWrap]}>
           {/* Website naming (2026-11-16): a village has Local Areas inside it; every level above has Sub-Groups. */}
-          <Action icon="apps" label={level === 'village' ? 'Local Areas' : 'Sub-Groups'} onPress={() => setGroups(true)} />
-          <Action icon="shield-checkmark" label="Q-Punch" onPress={() => setCouncil(true)} />
+          <Action icon="apps" label={level === 'village' ? 'Local Areas' : 'Sub-Groups'} onPress={() => setGroups(true)} wide={level === 'village'} />
+          <Action icon="shield-checkmark" label="Q-Punch" onPress={() => setCouncil(true)} wide={level === 'village'} />
+          {level === 'village' && (
+            <Action icon="briefcase" label="Contact Agent" onPress={() => setContactAgent(true)} wide />
+          )}
           <Action
             icon="stats-chart"
             label="Stats"
             onPress={() => placeId && router.push({ pathname: '/place/[level]/[id]', params: { level, id: placeId, name: placeName } })}
+            wide={level === 'village'}
           />
         </View>
       </View>
@@ -135,6 +146,11 @@ export function LevelPage({ accent, levels }: { title?: string; note?: string; a
             the status bar is — its title and "← Board" sat under the iPhone's clock and icons. */}
         <SafeAreaProvider>
           <GroupsSheet level={level} struct={struct} onClose={() => setGroups(false)} />
+        </SafeAreaProvider>
+      </Modal>
+      <Modal visible={contactAgent} animationType="slide" onRequestClose={() => setContactAgent(false)}>
+        <SafeAreaProvider>
+          <ContactAgentSheet onClose={() => setContactAgent(false)} />
         </SafeAreaProvider>
       </Modal>
     </View>
@@ -177,9 +193,9 @@ function PlaceId({ id }: { id: string }) {
   );
 }
 
-function Action({ icon, label, onPress }: { icon: React.ComponentProps<typeof Ionicons>['name']; label: string; onPress: () => void }) {
+function Action({ icon, label, onPress, wide }: { icon: React.ComponentProps<typeof Ionicons>['name']; label: string; onPress: () => void; wide?: boolean }) {
   return (
-    <Pressable onPress={onPress} style={({ pressed }) => [styles.action, pressed && { backgroundColor: colors.line }]} accessibilityRole="button" accessibilityLabel={label}>
+    <Pressable onPress={onPress} style={({ pressed }) => [styles.action, wide && styles.actionWide, pressed && { backgroundColor: colors.line }]} accessibilityRole="button" accessibilityLabel={label}>
       <Ionicons name={icon} size={15} color={colors.gold} />
       {/* One line, shrinking to fit when the phone's text size is large ("Local Areas" overflowed its button). */}
       <Text style={styles.actionText} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.7}>
@@ -219,6 +235,10 @@ const styles = StyleSheet.create({
   statValue: { color: colors.text, fontFamily: fonts.bold, fontSize: 14 },
   statLabel: { color: colors.faint, fontFamily: fonts.body, fontSize: 10.5 },
   actions: { flexDirection: 'row', gap: 6 },
+  // Village level has a 4th action (Contact Agent) -- wraps to 2 rows of 2 rather than squeezing
+  // 4 equally-flexed buttons into the same single row 3 already needed adjustsFontSizeToFit for.
+  actionsWrap: { flexWrap: 'wrap', rowGap: 6 },
+  actionWide: { flex: 0, width: '48%' },
   action: {
     flex: 1,
     height: 32,

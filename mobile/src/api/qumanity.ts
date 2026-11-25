@@ -110,6 +110,22 @@ export const verifyPinReset = (private_id: string, otp: string, new_pin: string)
 export const recoverId = (body: Record<string, string>) =>
   api<{ status: string; reference: string }>('/api/auth/recover-id', { body });
 
+// ---------- Recover Private ID, self-service paths (website app.py, 2026-11-25) ----------
+// Additive to recoverId() above (the mail-a-letter path, unchanged) -- two instant, self-service
+// paths the website's own /recover-id gained the same day: Name+DOB+Birth Country+PIN (the same
+// secret that already gates normal login), and a nuclear family member's phone+OTP for someone
+// who has forgotten both their ID and PIN. Both reveal private_id_9digit directly from the live
+// `users` row -- never recomputed (id_generator.generate_dob_id() is a one-shot minting function
+// with a live, mutating counter, not a decode function).
+export const recoverIdByPin = (name: string, dob: string, country_id: string, pin: string) =>
+  api<{ private_id_9digit: string }>('/api/auth/recover-id-by-pin', { body: { name, dob, country_id, pin } });
+export const recoverIdByFamilyOtp = (name: string, dob: string, country_id: string, family_phone: string) =>
+  api<{ status: string; masked_target: string; dev_code?: string }>('/api/auth/recover-id-by-family-otp', { body: { name, dob, country_id, family_phone } });
+/** Re-sends all four original fields, not just `otp` -- this is a public, sessionless,
+ * multi-user endpoint, so a code alone can't say which pending request it belongs to. */
+export const verifyFamilyOtp = (name: string, dob: string, country_id: string, family_phone: string, otp: string) =>
+  api<{ private_id_9digit: string }>('/api/auth/verify-family-otp', { body: { name, dob, country_id, family_phone, otp } });
+
 // ---------- Family recovery (website family_recovery_core, 2026-11-13..15) ----------
 // The locked-out member asks a nuclear family member (parent / child / sibling / spouse) who is
 // on Qumanity to vouch for them. Public routes (no sign-in); every failed check returns the SAME
@@ -453,6 +469,63 @@ export type PresenceStatus = 'green' | 'yellow' | 'grey' | 'red';
 export function presenceBatch(userIds: number[]) {
   if (!userIds.length) return Promise.resolve({ statuses: {} as Record<number, PresenceStatus> });
   return api<{ statuses: Record<number, PresenceStatus> }>(`/api/presence/batch?user_ids=${userIds.join(',')}`);
+}
+
+// ---------- Economic Engine: Cases, the Member side only (website case_core.py, 2026-11-25) ----------
+// Cases are deliberately NOT part of chat_core.list_my_conversations() or the ChatKind union above
+// -- they're fetched separately and merged into the Home tab's list client-side, same as the
+// website does (dashboard.js's loadConversations()), since a Case is a status-driven object (its
+// own TID Comments log), not one of chat_core's existing kinds. The Agent Dashboard (Queue/
+// Compass/Directory/History, the 3-column workspace) is desktop-only by deliberate decision --
+// see docs/phone_app_redesign_phase1_proposal_2026_11_25.md §5 in the website repo -- so nothing
+// Agent-facing is mirrored here.
+export type CaseType = 'commerce' | 'service_request';
+export type CaseStatus =
+  | 'created' | 'agent_assigned' | 'supplier_contacted' | 'pending_supplier'
+  | 'pending_payment' | 'in_progress' | 'resolved' | 'disputed' | 'escalated' | 'cancelled';
+export interface CaseRow {
+  id: number;
+  case_type: CaseType;
+  member_user_id: number;
+  agent_user_id: number | null;
+  supplier_user_id: number | null;
+  location_id: string;
+  location_level: BoardLevel;
+  subject: string;
+  status: CaseStatus;
+  escrow_amount: number;
+  chat_sub_id: number | null;
+  created_at: string;
+  updated_at: string;
+  resolved_at: string | null;
+}
+export function casesList(all = false) {
+  return api<{ cases: CaseRow[] }>(`/api/cases/my-cases${all ? '?all=1' : ''}`);
+}
+export function createCase(case_type: CaseType, subject: string) {
+  return api<CaseRow>('/api/cases/create', { body: { case_type, subject } });
+}
+export interface CaseLog {
+  id: number;
+  case_id: number;
+  author_user_id: number | null;
+  author_role: 'member' | 'agent' | 'supplier' | 'system' | 'council';
+  log_type: string;
+  message: string | null;
+  visibility: 'member' | 'internal';
+  created_at: string;
+}
+export function caseLogs(caseId: number) {
+  return api<{ logs: CaseLog[] }>(`/api/cases/${caseId}/logs`);
+}
+export function caseMessage(caseId: number, message: string) {
+  return api<CaseLog>(`/api/cases/${caseId}/message`, { body: { message } });
+}
+/** The Member UI's "Pay to Escrow" button -- locks `amount` Qoins into this Case's escrow. Only
+ * valid while the Case is 'pending_payment'; enforced server-side (case_core.update_status()'s
+ * own 'is_member_paying' exception), not re-checked here. */
+export function payCaseEscrow(caseId: number, amount: number) {
+  return api<CaseRow>(`/api/cases/${caseId}/pay`, { body: { amount } });
 }
 
 // ---------- Local Areas (website local_area_core, 2026-11-18) ----------

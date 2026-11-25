@@ -77,6 +77,27 @@ export function excludeSubcontinent(places: Place[]): Place[] {
   return places.filter((p) => p.tier !== 'country' || !SUBCONTINENT_IDS.includes(p.id));
 }
 
+/** A flat, country-only list -- for a simple picker that doesn't need the full wizard's
+ * continent-then-country drill-down (2026-11-25, Recover Private ID's PIN/Family-OTP tabs: the
+ * person already roughly knows where they were born, so one flat list is faster than a 2-step
+ * pick). Subcontinent countries sorted first (most registrants are from one of them), same
+ * convention the website's own recover_id.html uses for this exact list. Reuses loadWorld()'s
+ * cached promise via childrenOf(), so visiting both this and the registration wizard in one
+ * session never double-fetches /api/world-data. */
+export async function allCountries(): Promise<{ id: string; name: string }[]> {
+  const continents = await childrenOf(null);
+  const perContinent = await Promise.all(continents.map((c) => childrenOf(c)));
+  const countries = perContinent.flat().map((p) => ({ id: p.id, name: p.name }));
+  countries.sort((a, b) => {
+    const ia = SUBCONTINENT_IDS.indexOf(a.id);
+    const ib = SUBCONTINENT_IDS.indexOf(b.id);
+    const ra = ia === -1 ? 999 : ia;
+    const rb = ib === -1 ? 999 : ib;
+    return ra !== rb ? ra - rb : a.name.localeCompare(b.name);
+  });
+  return countries;
+}
+
 /** Children of a place (null = the top of the tree). `onlySubcontinent` limits countries to the 10. */
 export async function childrenOf(parent: Place | null, onlySubcontinent = false): Promise<Place[]> {
   if (!parent) {

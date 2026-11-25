@@ -9,19 +9,23 @@ import { colors, fonts, timelineColors } from '@/theme';
 
 type Icon = ComponentProps<typeof Ionicons>['name'];
 
-// Open on Public. Expo Router 58's <Tabs> no longer takes an initialRouteName prop (it would be
-// silently ignored and the app would open on Global); this export is the supported way.
-export const unstable_settings = { initialRouteName: 'public' };
+// Open on Home (2026-11-25, mobile redesign Step 1 -- was 'public'; matches the website's own
+// Chat-as-Dashboard pivot, docs/HANDOVER.md §20.1: "Home ... now the default tab"). Expo Router
+// 58's <Tabs> no longer takes an initialRouteName prop (it would be silently ignored and the app
+// would open on the first array entry instead); this export is the supported way.
+export const unstable_settings = { initialRouteName: 'home' };
 
-/** Dashboard: the 4 timelines, in the website's order, plus Chat (2026-11-24, Unified Chat
- * Architecture Step 3) -- the one new tab, not a 5th timeline; it reads across all of them
- * (chat_core.list_my_conversations()) rather than belonging to just one. */
+/** Home in the middle (2026-11-25, Rohit's decision): Global and Public on the left, Personal and
+ * Private on the right. Home (formerly "Chat", 2026-11-24 Unified Chat Architecture Step 3) is
+ * the one tab that isn't a timeline -- it reads across all of them
+ * (chat_core.list_my_conversations()) rather than belonging to just one -- and stays the tab the
+ * app opens on (initialRouteName above). */
 const TABS: { name: string; title: string; icon: Icon; color: string }[] = [
   { name: 'global', title: 'Global', icon: 'earth', color: timelineColors.global },
   { name: 'public', title: 'Public', icon: 'people', color: timelineColors.public },
+  { name: 'home', title: 'Home', icon: 'chatbubbles', color: colors.gold },
   { name: 'personal', title: 'Personal', icon: 'heart', color: timelineColors.personal },
   { name: 'private', title: 'Private', icon: 'lock-closed', color: timelineColors.private },
-  { name: 'chat', title: 'Chat', icon: 'chatbubbles', color: colors.gold },
 ];
 
 export default function TabsLayout() {
